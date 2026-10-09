@@ -166,6 +166,33 @@ function warrantyInfo(r) {
 
 const categoryName = (id) => categories.find((c) => c.id === id)?.name || "";
 
+// צבע ואייקון לכל קטגוריה. קטגוריה שאין לה עיצוב משלה מקבלת את העיצוב של "אחר".
+const CATEGORY_STYLE = {
+  appliances: { fg: "#1D4ED8", bg: "#E3EBFC", icon: '<path d="M9 2v5M15 2v5"/><path d="M6 7h12v4a6 6 0 0 1-12 0z"/><path d="M12 17v5"/>' },
+  electronics: { fg: "#6D28D9", bg: "#EEE7FB", icon: '<rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>' },
+  phones: { fg: "#0E7490", bg: "#DFF1F5", icon: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>' },
+  furniture: { fg: "#A16207", bg: "#FAEFD9", icon: '<path d="M5 11V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3"/><path d="M3 18v-5a2 2 0 0 1 4 0v1h10v-1a2 2 0 0 1 4 0v5z"/><path d="M5 18v2M19 18v2"/>' },
+  car: { fg: "#B91C1C", bg: "#FBE4E4", icon: '<path d="M5 15l1.6-4.6A2 2 0 0 1 8.5 9h7a2 2 0 0 1 1.9 1.4L19 15"/><rect x="3" y="15" width="18" height="4" rx="1"/><path d="M6 19v2M18 19v2"/>' },
+  tools: { fg: "#C2410C", bg: "#FCE8DB", icon: '<path d="M14.7 6.3a4 4 0 0 0-5.3 5.3L3 18l3 3 6.4-6.4a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.3-.5-.5-2.3z"/>' },
+  sports: { fg: "#15803D", bg: "#E0F3E5", icon: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15.5 0 18M12 3c-2.5 2.5-2.5 15.5 0 18"/>' },
+  home: { fg: "#BE185D", bg: "#FBE3EE", icon: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/>' },
+  other: { fg: "#57534E", bg: "#EEECE8", icon: '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>' }
+};
+const catStyle = (id) => CATEGORY_STYLE[id] || CATEGORY_STYLE.other;
+
+// אייקון הקטגוריה בתוך ריבוע צבעוני
+function catBadge(id, cls = "cat-badge") {
+  const st = catStyle(id);
+  const span = el("span", { class: cls, "aria-hidden": "true", style: `background:${st.bg};color:${st.fg}` });
+  span.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${st.icon}</svg>`;
+  return span;
+}
+
+function syncCategoryIcon() {
+  const id = $("category-select").value;
+  $("category-icon").replaceChildren(catBadge(id || "other", "cat-badge small"));
+}
+
 function errMsg(e) {
   console.error(e);
   const code = String(e?.code || "");
@@ -429,6 +456,7 @@ function renderReceipts() {
     const w = warrantyInfo(r);
     const items = itemsOf(r);
     return el("a", { class: "receipt", href: `#/r/${r.id}` },
+      catBadge(r.categoryId),
       el("div", { class: "receipt-main" },
         el("div", { class: "receipt-title" },
           mainItem(items)?.name || r.productName || "ללא שם",
@@ -480,7 +508,9 @@ function fillCategorySelect() {
     ...categories.map((c) => el("option", { value: c.id, text: c.name }))
   );
   if (current) sel.value = current;
+  syncCategoryIcon();
 }
+$("category-select").addEventListener("change", syncCategoryIcon);
 
 function openEdit(id) {
   const r = id ? receipts.find((x) => x.id === id) : null;
@@ -531,6 +561,7 @@ function openEdit(id) {
   }
   renderPendingFiles();
   renderItems();
+  syncCategoryIcon();
   show("edit");
 }
 
@@ -685,7 +716,9 @@ function resetScan() {
 function setSaveState() {
   const btn = $("btn-save");
   btn.disabled = scanning;
-  btn.textContent = scanning ? "ממתין לסריקה…" : "שמירה";
+  btn.classList.toggle("waiting", scanning);
+  btn.setAttribute("aria-label", scanning ? "ממתין לסריקה" : "שמירה");
+  btn.title = scanning ? "ממתין לסריקה…" : "שמירה";
 }
 
 function scanStatus(state, text) {
@@ -742,6 +775,7 @@ function applyScan(d, force) {
   set("date", d.purchaseDate);
   set("time", d.purchaseTime);
   if (d.categoryId && categories.some((c) => c.id === d.categoryId)) set("categoryId", d.categoryId);
+  syncCategoryIcon();
   if (d.tags?.length) set("tags", d.tags.join(", "));
   if (d.items?.length && (force || !userEdited.has("items"))) {
     formItems = d.items.map((it) => ({
@@ -943,7 +977,10 @@ function openDetail(id) {
 function renderDetail(r) {
   $("btn-whatsapp").href = whatsappHref(whatsappReceiptText(r));
   $("detail-edit").href = `#/r/${r.id}/edit`;
-  $("detail-category").textContent = categoryName(r.categoryId);
+  const cst = catStyle(r.categoryId);
+  const catEl = $("detail-category");
+  catEl.replaceChildren(catBadge(r.categoryId, "cat-badge small"), categoryName(r.categoryId) || "ללא קטגוריה");
+  catEl.style.cssText = `background:${cst.bg};color:${cst.fg}`;
   // מהיקר לזול, כך שהמוצר הראשי מופיע ראשון
   const items = [...itemsOf(r)].sort((a, b) => priceValue(b.price) - priceValue(a.price));
   const start = toDate(r.purchaseDate);

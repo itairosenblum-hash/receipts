@@ -14,8 +14,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=17">
-<script type="module" src="app.js?v=21"></script>
+<link rel="stylesheet" href="app.css?v=18">
+<script type="module" src="app.js?v=22"></script>
 </head>
 <body>
 
@@ -151,7 +151,7 @@
         <span class="money"><input name="amount" type="text" inputmode="decimal" autocomplete="off" class="money-input"><span class="money-sign" aria-hidden="true">₪</span></span>
       </label>
       <label class="field">קטגוריה
-        <select name="categoryId" id="category-select"></select>
+        <span class="cat-select"><span id="category-icon"></span><select name="categoryId" id="category-select"></select></span>
       </label>
     </div>
     <div class="grid-2">
@@ -170,8 +170,13 @@
     </label>
     <p id="form-error" class="error" hidden></p>
     <div class="form-actions">
-      <button type="submit" id="btn-save" class="btn-primary grow">שמירה</button>
-      <a href="#/" id="btn-cancel" class="btn-secondary">ביטול</a>
+      <button type="submit" id="btn-save" class="btn-primary grow icon-action" aria-label="שמירה" title="שמירה">
+        <svg class="when-ready" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 12.5l5 5L19.5 7"/></svg>
+        <span class="spinner small when-waiting" aria-hidden="true"></span>
+      </button>
+      <a href="#/" id="btn-cancel" class="btn-secondary icon-action cancel" aria-label="ביטול" title="ביטול">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </a>
     </div>
   </form>
 </section>

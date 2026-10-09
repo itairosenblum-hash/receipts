@@ -307,6 +307,8 @@ a.btn-secondary, a.btn-primary { display: inline-flex; align-items: center; just
 .detail-head { display: flex; flex-direction: column; gap: 4px; }
 .detail-head h1 { font-size: 26px; }
 .eyebrow { font-size: 13px; font-weight: 700; color: var(--accent); }
+#detail-category { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; }
+#detail-category .cat-badge { background: transparent !important; }
 .big-amount { font-family: 'Rubik', sans-serif; font-weight: 500; font-size: 32px; }
 .warranty-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .warranty-head b { font-size: 16px; }
@@ -352,3 +354,20 @@ a.btn-secondary, a.btn-primary { display: inline-flex; align-items: center; just
   background: var(--ink); color: #fff; padding: 12px 18px; border-radius: 12px; font-size: 15px;
   max-width: calc(100% - 40px);
 }
+
+/* Category colors and icons */
+.cat-badge { flex: none; width: 42px; height: 42px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; }
+.cat-badge svg { width: 24px; height: 24px; }
+.cat-badge.small { width: 26px; height: 26px; border-radius: 8px; }
+.cat-badge.small svg { width: 17px; height: 17px; }
+.cat-select { position: relative; display: block; }
+.cat-select #category-icon { position: absolute; inset-inline-start: 8px; top: 50%; transform: translateY(-50%); display: flex; pointer-events: none; }
+.cat-select select { width: 100%; padding-inline-start: 42px; }
+
+/* Icon-only save / cancel */
+.icon-action { display: inline-flex; align-items: center; justify-content: center; height: 54px; }
+.icon-action.cancel { width: 72px; flex: none; color: var(--muted); }
+#btn-save .when-waiting { display: none; border-color: rgba(255,255,255,.35); border-top-color: #fff; }
+#btn-save.waiting .when-waiting { display: inline-block; }
+#btn-save.waiting .when-ready { display: none; }
+#btn-save:disabled { opacity: .7; cursor: default; }
