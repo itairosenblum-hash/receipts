@@ -84,6 +84,16 @@ jobs:
           fi
           exit $status
 
+      # הפונקציות בודקות בעצמן הרשאות (Firebase Auth / state), לכן הן חייבות להיות נגישות לקריאה מהדפדפן.
+      # פריסה שנכשלה באמצע עלולה להשאיר פונקציה בלי הרשאה הזו, ופריסות הבאות מדלגות עליה כ"לא השתנתה".
+      - name: Ensure public invoker
+        run: |
+          for svc in driveauthurl drivecallback savereceipt scanreceipt addfile removefile deletereceipt getfile; do
+            gcloud run services add-iam-policy-binding "$svc" --region europe-west1 --project "$PROJECT" \
+              --member=allUsers --role=roles/run.invoker --quiet --format=none
+            echo "ok $svc"
+          done
+
       - name: Diagnostics
         if: always()
         run: |
@@ -92,7 +102,9 @@ jobs:
           echo "::notice title=deploy log tail::$(cat tail.txt)"
           list="$(gcloud functions list --project "$PROJECT" --regions=europe-west1 --format='value(name,state,environment)' 2>&1 | awk '{printf "%s%%0A", $0}')"
           echo "::notice title=functions::${list}"
-          for svc in driveauthurl savereceipt scanreceipt; do
-            pol="$(gcloud run services get-iam-policy "$svc" --region europe-west1 --project "$PROJECT" --format='value(bindings)' 2>&1 | head -5 | awk '{printf "%s%%0A", $0}')"
-            echo "::notice title=invoker ${svc}::${pol}"
+          pols=""
+          for svc in driveauthurl drivecallback savereceipt scanreceipt addfile removefile deletereceipt getfile; do
+            p="$(gcloud run services get-iam-policy "$svc" --region europe-west1 --project "$PROJECT" --format='value(bindings)' 2>&1 | grep -q allUsers && echo public || echo NOT-PUBLIC)"
+            pols="${pols}${svc}: ${p}%0A"
           done
+          echo "::notice title=invokers::${pols}"
