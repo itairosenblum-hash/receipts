@@ -848,11 +848,14 @@ form.addEventListener("submit", async (ev) => {
         fromBulk.savedId = res.data.id;
         fromBulk.title = receipt.items[0]?.name || fromBulk.title;
         bulkEditId = null;
-        location.hash = "#/bulk";
+        if (!finishBulkIfDone(0)) {
+          location.hash = "#/bulk";
+          toast("הקבלה נשמרה");
+        }
       } else {
         location.hash = `#/r/${res.data.id}`;
+        toast("הקבלה נשמרה");
       }
-      toast("הקבלה נשמרה");
     }
   } catch (e) {
     err.textContent = errMsg(e);
@@ -1481,7 +1484,7 @@ $("bulk-save-all").addEventListener("click", async () => {
   bulkSaving = false;
   renderBulk();
   const saved = ready.filter((b) => b.status === "saved").length;
-  if (saved) toast(saved === 1 ? "קבלה אחת נשמרה" : `${saved} קבלות נשמרו`);
+  finishBulkIfDone(saved);
 });
 
 const BULK_STATUS = {
@@ -1542,6 +1545,23 @@ function renderBulk() {
   const btn = $("bulk-save-all");
   btn.disabled = !ready || bulkSaving;
   btn.textContent = bulkSaving ? "שומר…" : ready === 1 ? "שמירת קבלה אחת" : ready ? `שמירת ${ready} קבלות` : "שמירת הכל";
+}
+
+// אם לא נשאר בייבוא שום דבר שדורש טיפול: מנקים את הרשימה וחוזרים למסך הראשי
+function finishBulkIfDone(savedNow) {
+  const active = bulkItems.filter((b) => b.status !== "removed");
+  const pending = active.filter((b) => b.status !== "saved");
+  if (active.length && !pending.length) {
+    active.forEach((b) => b.file?.previewUrl && URL.revokeObjectURL(b.file.previewUrl));
+    bulkItems = [];
+    location.hash = "#/";
+    toast(active.length === 1 ? "הקבלה נשמרה" : `כל ${active.length} הקבלות נשמרו`);
+    return true;
+  }
+  if (savedNow) {
+    toast(`${savedNow === 1 ? "קבלה אחת נשמרה" : savedNow + " קבלות נשמרו"} · ${pending.length === 1 ? "קבלה אחת נשארה" : pending.length + " נשארו"} לבדיקה`);
+  }
+  return false;
 }
 
 function openBulkEdit(id) {
