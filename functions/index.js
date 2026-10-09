@@ -1,6 +1,8 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { getMessaging } from "firebase-admin/messaging";
 import { setGlobalOptions, logger } from "firebase-functions/v2";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { OAuth2Client } from "google-auth-library";
@@ -21,6 +23,7 @@ const DRIVE_FOLDER_ID = defineString("DRIVE_FOLDER_ID", { default: "" });
 const APP_URL = defineString("APP_URL", { default: "https://itairosenblum-hash.github.io/receipts/" });
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 const GEMINI_MODEL = defineString("GEMINI_MODEL", { default: "gemini-3.8-flash" });
+const NOTIFY_URL = defineString("NOTIFY_URL", { default: "https://shopping-fa855.web.app/" });
 
 const ADMIN_EMAIL = "itai.rosenblum@gmail.com";
 const APP_FOLDER_NAME = "קבלות ואחריות";
@@ -606,4 +609,101 @@ export const getFile = onCall({ secrets: SECRETS, memory: "512MiB" }, async (req
     mimeType: file.mimeType,
     data: Buffer.from(res.data).toString("base64")
   };
+});
+
+/* ---------- warranty notifications ---------- */
+
+const REMINDER_DAYS = [30, 7];
+const DAY_MS = 86400000;
+
+// ימים שנותרו לפי תאריך לוח בישראל (לא לפי שעות), כדי שההתראה תצא באותו יום לכל המוצרים
+function daysUntil(ms, now = Date.now()) {
+  const d = (t) => Date.parse(localDateParts(t).date + "T00:00:00Z");
+  return Math.round((d(ms) - d(now)) / DAY_MS);
+}
+
+// בוחר אילו תזכורות לשלוח: לכל מוצר ולכל סף (30, 7) פעם אחת בלבד, גם אם יום הבדיקה עצמו פוספס
+function dueReminders(receipt, now = Date.now()) {
+  const items = Array.isArray(receipt.items) && receipt.items.length
+    ? receipt.items
+    : [{ name: receipt.productName, warrantyEnd: receipt.warrantyEnd }];
+  const sent = receipt.remindersSent || {};
+  const out = [];
+  items.forEach((it, i) => {
+    const endMs = it.warrantyEnd?.toMillis ? it.warrantyEnd.toMillis() : (it.warrantyEnd ? Date.parse(it.warrantyEnd) : null);
+    if (!endMs) return;
+    const days = daysUntil(endMs, now);
+    if (days < 0) return;
+    const threshold = REMINDER_DAYS.filter((t) => days <= t).sort((a, b) => a - b)[0];
+    if (threshold === undefined) return;
+    const key = `${i}_${threshold}`;
+    if (sent[key]) return;
+    // סף גבוה שלא נשלח בזמן לא נשלח באיחור אם כבר הגענו לסף הנמוך
+    out.push({ key, index: i, name: it.name || receipt.productName || "מוצר", days, endMs });
+  });
+  return out;
+}
+
+async function allTokens() {
+  const snap = await db.collection("tokens").get();
+  return snap.docs.flatMap((d) => (d.data().tokens || []).map((token) => ({ token, ref: d.ref })));
+}
+
+async function sendToTokens(targets, { title, body, link }) {
+  if (!targets.length) return { sent: 0 };
+  const res = await getMessaging().sendEachForMulticast({
+    tokens: targets.map((t) => t.token),
+    notification: { title, body },
+    webpush: {
+      notification: { icon: new URL("icon-192.png", NOTIFY_URL.value()).href, dir: "rtl", lang: "he", badge: new URL("icon-192.png", NOTIFY_URL.value()).href },
+      fcmOptions: { link }
+    }
+  });
+  // ניקוי טוקנים של מכשירים שכבר לא רשומים
+  await Promise.all(res.responses.map((r, i) => {
+    const code = r.error?.code || "";
+    if (code.includes("registration-token-not-registered") || code.includes("invalid-registration-token") || code.includes("invalid-argument")) {
+      return targets[i].ref.update({ tokens: FieldValue.arrayRemove(targets[i].token) }).catch(() => {});
+    }
+    return null;
+  }));
+  return { sent: res.successCount, failed: res.failureCount };
+}
+
+const reminderText = (r, days, end) => ({
+  title: days === 0 ? `האחריות על ${r.name} פגה היום` : `האחריות על ${r.name} פגה בעוד ${days} ימים`,
+  body: `בתוקף עד ${localDateParts(end).date.split("-").reverse().join(".")}. לחצו לפתיחת הקבלה.`
+});
+
+export const warrantyReminders = onSchedule({ schedule: "0 9 * * *", timeZone: TIME_ZONE }, async () => {
+  const targets = await allTokens();
+  const receipts = await db.collection("receipts").where("warrantyEnd", ">=", Timestamp.fromMillis(Date.now() - DAY_MS)).get();
+  let count = 0;
+  for (const doc of receipts.docs) {
+    const due = dueReminders(doc.data());
+    if (!due.length) continue;
+    for (const r of due) {
+      if (targets.length) {
+        await sendToTokens(targets, { ...reminderText(r, r.days, r.endMs), link: `${NOTIFY_URL.value()}#/r/${doc.id}` });
+      }
+      count++;
+    }
+    // מסמנים כנשלח גם כשאין מכשירים רשומים, כדי לא להציף כשמישהו נרשם מאוחר
+    await doc.ref.update(Object.fromEntries(due.map((r) => [`remindersSent.${r.key}`, true])));
+  }
+  logger.info("warranty reminders", { receipts: receipts.size, reminders: count, devices: targets.length });
+});
+
+export const sendTestNotification = onCall(async (request) => {
+  await requireAllowed(request);
+  const snap = await db.doc(`tokens/${request.auth.uid}`).get();
+  const targets = (snap.data()?.tokens || []).map((token) => ({ token, ref: snap.ref }));
+  if (!targets.length) throw new HttpsError("failed-precondition", "המכשיר הזה עוד לא רשום להתראות");
+  const res = await sendToTokens(targets, {
+    title: "התראות האחריות פועלות",
+    body: "כך תיראה תזכורת חודש ושבוע לפני שאחריות פגה.",
+    link: NOTIFY_URL.value()
+  });
+  if (!res.sent) throw new HttpsError("internal", "שליחת ההתראה נכשלה");
+  return res;
 });

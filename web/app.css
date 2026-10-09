@@ -231,6 +231,18 @@ a.btn-secondary, a.btn-primary { display: inline-flex; align-items: center; just
 .add-file { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
 .add-file select { height: 46px; border-radius: 10px; border: 1px solid #D9D5CC; font: inherit; font-size: 15px; background: var(--surface); color: var(--ink); padding: 0 8px; }
 
+/* List filters */
+.filters { display: flex; flex-direction: column; gap: 10px; }
+.chip-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.chip-row::-webkit-scrollbar { display: none; }
+.filter-chip {
+  flex: none; height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap;
+}
+.filter-chip.active { background: var(--ink); color: #fff; border-color: var(--ink); font-weight: 600; }
+.filter-chip .count { opacity: .7; margin-inline-start: 4px; font-weight: 400; }
+.filters select { height: 40px; font-size: 14px; }
+
 /* Bulk import */
 .header-actions { display: flex; align-items: center; gap: 4px; }
 .empty .btn-secondary { margin-top: 12px; padding: 0 18px; }
@@ -304,6 +316,9 @@ a.btn-secondary, a.btn-primary { display: inline-flex; align-items: center; just
 .rows > div:last-child { border-bottom: 0; }
 .rows dt { color: var(--muted); font-size: 14px; flex: none; }
 .rows dd { margin: 0; font-size: 15px; font-weight: 600; text-align: left; overflow-wrap: anywhere; white-space: pre-line; }
+
+.share-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 50px; }
+.share-btn.ready { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* Busy overlay */
 .busy { position: fixed; inset: 0; background: rgba(28, 27, 25, .35); display: flex; align-items: center; justify-content: center; z-index: 20; }

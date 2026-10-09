@@ -14,8 +14,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=12">
-<script type="module" src="app.js?v=13"></script>
+<link rel="stylesheet" href="app.css?v=14">
+<script type="module" src="app.js?v=15"></script>
 </head>
 <body>
 
@@ -68,6 +68,23 @@
     <span class="sr-only">חיפוש</span>
     <input id="search" type="search" placeholder="חיפוש מוצר, חנות או תגית">
   </label>
+  <div class="filters" id="filters" hidden>
+    <div class="chip-row" role="group" aria-label="סינון לפי אחריות">
+      <button type="button" class="filter-chip active" data-filter="all">הכל</button>
+      <button type="button" class="filter-chip" data-filter="valid">אחריות בתוקף</button>
+      <button type="button" class="filter-chip" data-filter="soon">פגה בקרוב</button>
+      <button type="button" class="filter-chip" data-filter="expired">פגה</button>
+      <button type="button" class="filter-chip" data-filter="none">בלי אחריות</button>
+    </div>
+    <div class="grid-2">
+      <label class="field"><span class="sr-only">קטגוריה</span>
+        <select id="filter-category"></select>
+      </label>
+      <label class="field"><span class="sr-only">שנה</span>
+        <select id="filter-year"></select>
+      </label>
+    </div>
+  </div>
   <div id="drive-banner" class="banner" hidden>
     <span>הדרייב עוד לא מחובר, ולכן אי אפשר לשמור קבלות.</span>
     <a href="#/settings">לחיבור</a>
@@ -194,6 +211,10 @@
       </label>
     </div>
   </div>
+  <button id="btn-share" class="btn-secondary share-btn" type="button">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+    <span id="btn-share-text">שיתוף הקבלה</span>
+  </button>
   <button id="btn-delete" class="btn-danger" type="button">מחיקת קבלה</button>
 </section>
 
@@ -239,6 +260,13 @@
     <p id="drive-status" class="muted"></p>
     <a id="drive-folder-link" href="#" target="_blank" rel="noopener" hidden>פתיחת התיקייה בדרייב</a>
     <button id="btn-drive-connect" class="btn-primary" type="button" hidden>חיבור Google Drive</button>
+  </div>
+
+  <div class="card" id="notify-card">
+    <h2>התראות אחריות</h2>
+    <p id="notify-status" class="muted"></p>
+    <button id="btn-notify" class="btn-primary" type="button" hidden>הפעלת התראות במכשיר הזה</button>
+    <button id="btn-notify-test" class="btn-secondary" type="button" hidden>שליחת התראת בדיקה</button>
   </div>
 
   <div class="card" id="access-card">

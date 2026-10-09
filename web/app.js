@@ -8,6 +8,7 @@ import {
   collection, query, orderBy, arrayUnion, arrayRemove, Timestamp, serverTimestamp, deleteField
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
+import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
 
 const app = initializeApp(firebaseConfig);
@@ -320,6 +321,7 @@ function startApp() {
     categories = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     if (!categories.length && isAdmin) await seedCategories();
     fillCategorySelect();
+    renderReceipts();
   }, (e) => console.error(e)));
 
   unsubs.push(onSnapshot(driveRef, (snap) => {
@@ -356,13 +358,52 @@ function renderAvatar() {
 
 /* ---------- list ---------- */
 
+let listFilter = "all";
+
+function warrantyBucket(r) {
+  const w = warrantyInfo(r);
+  if (!w) return "none";
+  return w.cls === "off" ? "expired" : w.cls === "soon" ? "soon" : "valid";
+}
+const matchesBucket = (r, f) => f === "all" || (f === "valid" ? ["valid", "soon"].includes(warrantyBucket(r)) : warrantyBucket(r) === f);
+const receiptYear = (r) => toDate(r.purchaseDate)?.getFullYear();
+
+function fillFilterSelects() {
+  const catSel = $("filter-category"), yearSel = $("filter-year");
+  const cat = catSel.value, year = yearSel.value;
+  const usedCats = new Set(receipts.map((r) => r.categoryId));
+  catSel.replaceChildren(el("option", { value: "", text: "כל הקטגוריות" }),
+    ...categories.filter((c) => usedCats.has(c.id)).map((c) => el("option", { value: c.id, text: c.name })));
+  const years = [...new Set(receipts.map(receiptYear).filter(Boolean))].sort((a, b) => b - a);
+  yearSel.replaceChildren(el("option", { value: "", text: "כל השנים" }), ...years.map((y) => el("option", { value: String(y), text: String(y) })));
+  catSel.value = [...catSel.options].some((o) => o.value === cat) ? cat : "";
+  yearSel.value = [...yearSel.options].some((o) => o.value === year) ? year : "";
+}
+
 function renderReceipts() {
+  fillFilterSelects();
   const term = norm($("search").value);
-  const list = receipts.filter((r) => {
+  const cat = $("filter-category").value;
+  const year = $("filter-year").value;
+  const base = receipts.filter((r) => {
+    if (cat && r.categoryId !== cat) return false;
+    if (year && String(receiptYear(r)) !== year) return false;
     if (!term) return true;
     return [...itemsOf(r).flatMap((it) => [it.name, it.printedName, it.serialNumber]), r.store, categoryName(r.categoryId), ...(r.tags || [])]
       .filter(Boolean).some((s) => String(s).toLowerCase().includes(term));
   });
+  const list = base.filter((r) => matchesBucket(r, listFilter));
+
+  // מונים על הכפתורים לפי שאר הסינונים
+  document.querySelectorAll(".filter-chip").forEach((btn) => {
+    const f = btn.dataset.filter;
+    const n = base.filter((r) => matchesBucket(r, f)).length;
+    const label = btn.dataset.label || (btn.dataset.label = btn.textContent);
+    btn.replaceChildren(...(f === "all" ? [label] : [label, el("span", { class: "count", text: String(n) })]));
+    btn.classList.toggle("active", f === listFilter);
+    btn.setAttribute("aria-pressed", String(f === listFilter));
+  });
+  $("filters").hidden = receipts.length === 0;
 
   $("receipts").replaceChildren(...list.map((r) => {
     const w = warrantyInfo(r);
@@ -383,8 +424,16 @@ function renderReceipts() {
   const empty = $("empty");
   empty.hidden = !receiptsLoaded || list.length > 0;
   empty.querySelector("h2").textContent = receipts.length ? "לא נמצאו תוצאות" : "עוד אין קבלות";
-  empty.querySelector("p").textContent = receipts.length ? "נסו מילת חיפוש אחרת." : "לחצו על הפלוס כדי להוסיף את הקבלה הראשונה.";
+  empty.querySelector("p").textContent = receipts.length ? "נסו לשנות את החיפוש או הסינון." : "לחצו על הפלוס כדי להוסיף את הקבלה הראשונה.";
+  $("empty-bulk").hidden = receipts.length > 0;
 }
+
+document.querySelectorAll(".filter-chip").forEach((btn) => btn.addEventListener("click", () => {
+  listFilter = btn.dataset.filter;
+  renderReceipts();
+}));
+$("filter-category").addEventListener("change", renderReceipts);
+$("filter-year").addEventListener("change", renderReceipts);
 
 $("search").addEventListener("input", renderReceipts);
 
@@ -836,6 +885,7 @@ function openDetail(id) {
   }
   clearTimeout(openDetail._t);
   const wasOpen = detailId === id && currentView() === "detail";
+  if (!wasOpen) resetShareButton();
   detailId = id;
   renderDetail(r);
   if (!wasOpen) show("detail");
@@ -1033,6 +1083,89 @@ $("btn-delete").addEventListener("click", async () => {
   }
 });
 
+/* ---------- share a receipt ---------- */
+
+let sharePrepared = null; // { receiptId, files, text, title }
+
+function receiptSummary(r) {
+  const items = itemsOf(r);
+  const d = toDate(r.purchaseDate);
+  const lines = [
+    items.map((it) => it.name).join(", "),
+    [r.store, d ? fmtDate(d) : "", fmtAmount(r.amount, r.currency || "ILS")].filter(Boolean).join(" · ")
+  ];
+  for (const it of items) {
+    const w = warrantyStatus(it.warrantyEnd);
+    if (w) lines.push(`${items.length > 1 ? it.name + ": " : ""}אחריות עד ${fmtDate(w.end)}`);
+    if (it.serialNumber) lines.push(`${items.length > 1 ? it.name + ": " : ""}מספר סידורי ${it.serialNumber}`);
+  }
+  return lines.filter(Boolean).join("\n");
+}
+
+function resetShareButton() {
+  sharePrepared = null;
+  $("btn-share").classList.remove("ready");
+  $("btn-share-text").textContent = "שיתוף הקבלה";
+}
+
+async function doShare(p) {
+  try {
+    if (p.files.length && navigator.canShare?.({ files: p.files })) {
+      await navigator.share({ files: p.files, title: p.title, text: p.text });
+    } else if (navigator.share) {
+      await navigator.share({ title: p.title, text: p.text });
+      toast("הדפדפן לא תומך בשיתוף קבצים, נשלח רק הטקסט");
+    } else {
+      // אין שיתוף בכלל: מורידים את הקבצים
+      p.files.forEach((f) => {
+        const a = el("a", { href: URL.createObjectURL(f), download: f.name });
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      });
+      toast("הקבצים הורדו למכשיר");
+    }
+  } catch (e) {
+    if (e.name !== "AbortError") toast("השיתוף נכשל");
+  } finally {
+    resetShareButton();
+  }
+}
+
+$("btn-share").addEventListener("click", async () => {
+  const r = receipts.find((x) => x.id === detailId);
+  if (!r) return;
+  // שלב שני: הקבצים כבר הוכנו, הלחיצה הזו פותחת את חלון השיתוף
+  if (sharePrepared?.receiptId === r.id) {
+    await doShare(sharePrepared);
+    return;
+  }
+  busy("מכין את הקבלה לשיתוף…");
+  try {
+    const wanted = (r.files || []).filter((f) => f.kind === "receipt");
+    const toFetch = (wanted.length ? wanted : (r.files || [])).slice(0, 3);
+    const files = [];
+    for (const f of toFetch) {
+      const res = await call("getFile", 60000)({ receiptId: r.id, driveFileId: f.driveFileId });
+      const bytes = Uint8Array.from(atob(res.data.data), (c) => c.charCodeAt(0));
+      files.push(new File([bytes], f.name, { type: res.data.mimeType }));
+    }
+    const title = itemsOf(r)[0]?.name || "קבלה";
+    sharePrepared = { receiptId: r.id, files, title, text: receiptSummary(r) };
+  } catch (e) {
+    busy(null);
+    toast(errMsg(e));
+    return;
+  }
+  busy(null);
+  // דפדפנים מאפשרים לפתוח חלון שיתוף רק מיד אחרי לחיצה; אם ההורדה ארכה, מבקשים לחיצה נוספת
+  if (navigator.userActivation?.isActive) {
+    await doShare(sharePrepared);
+  } else {
+    $("btn-share").classList.add("ready");
+    $("btn-share-text").textContent = "הקבלה מוכנה, לחצו לשליחה";
+  }
+});
+
 /* ---------- Drive (settings) ---------- */
 
 function renderDrive() {
@@ -1076,6 +1209,83 @@ const DRIVE_RESULTS = {
   "folder-not-found": "תיקיית היעד לא נמצאה או שאין אליה גישה",
   error: "החיבור נכשל"
 };
+
+/* ---------- warranty notifications ---------- */
+
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+let notifyBusy = false;
+
+async function renderNotify() {
+  const status = $("notify-status"), btn = $("btn-notify"), test = $("btn-notify-test");
+  btn.hidden = test.hidden = true;
+  const supported = "Notification" in window && "serviceWorker" in navigator && await messagingSupported().catch(() => false);
+  if (!supported) {
+    status.textContent = "הדפדפן הזה לא תומך בהתראות. אפשר להתקין את האפליקציה למסך הבית ולנסות שוב משם.";
+    return;
+  }
+  const perm = Notification.permission;
+  if (perm === "denied") {
+    status.textContent = "ההתראות חסומות במכשיר הזה. כדי להפעיל: הגדרות הטלפון ← אפליקציות ← קבלות (או Chrome) ← התראות.";
+    return;
+  }
+  let registered = false;
+  try {
+    const snap = await getDoc(doc(db, "tokens", currentUser.uid));
+    registered = perm === "granted" && (snap.data()?.tokens || []).length > 0;
+  } catch {}
+  if (registered) {
+    status.textContent = "פעילות במכשיר הזה. תקבלו תזכורת חודש ושבוע לפני שאחריות פגה, בבוקר בשעה 9.";
+    test.hidden = false;
+    btn.hidden = false;
+    btn.textContent = "רענון הרישום";
+    btn.className = "btn-secondary";
+  } else {
+    status.textContent = isStandalone()
+      ? "תזכורת חודש ושבוע לפני שאחריות פגה, לכל המכשירים שהופעלו."
+      : "תזכורת חודש ושבוע לפני שאחריות פגה. מומלץ להפעיל מתוך האפליקציה המותקנת.";
+    btn.hidden = false;
+    btn.textContent = "הפעלת התראות במכשיר הזה";
+    btn.className = "btn-primary";
+  }
+}
+
+$("btn-notify").addEventListener("click", async () => {
+  if (notifyBusy) return;
+  notifyBusy = true;
+  busy("מפעיל התראות…");
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") throw Object.assign(new Error("לא אושרו התראות"), { user: true });
+    const registration = await navigator.serviceWorker.ready;
+    const token = await getToken(getMessaging(app), { serviceWorkerRegistration: registration });
+    if (!token) throw new Error("לא התקבל מזהה מכשיר");
+    await setDoc(doc(db, "tokens", currentUser.uid), {
+      email: currentUser.email,
+      tokens: arrayUnion(token),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    toast("ההתראות הופעלו במכשיר הזה");
+  } catch (e) {
+    console.error(e);
+    toast(e.user ? e.message : "הפעלת ההתראות נכשלה: " + (e.code || e.message));
+  } finally {
+    busy(null);
+    notifyBusy = false;
+    renderNotify();
+  }
+});
+
+$("btn-notify-test").addEventListener("click", async () => {
+  busy("שולח התראת בדיקה…");
+  try {
+    await call("sendTestNotification", 30000)();
+    toast("נשלחה התראה. אם האפליקציה פתוחה, ייתכן שהיא תופיע רק אחרי שתצאו ממנה.");
+  } catch (e) {
+    toast(errMsg(e));
+  } finally {
+    busy(null);
+  }
+});
 
 /* ---------- access list (settings) ---------- */
 
@@ -1373,6 +1583,7 @@ function route() {
       history.replaceState(null, "", "#/settings");
     }
     show("settings");
+    renderNotify();
     return;
   }
   if (hash === "#/bulk") {
