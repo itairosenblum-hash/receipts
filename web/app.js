@@ -8,7 +8,7 @@ import {
   collection, query, orderBy, arrayUnion, arrayRemove, Timestamp, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
-import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js";
+import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
