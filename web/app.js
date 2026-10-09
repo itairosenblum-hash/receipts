@@ -139,7 +139,15 @@ function itemsOf(r) {
 // המוצר "הראשי" של קבלה: זה עם המחיר הגבוה ביותר. בלי מחירים, או בשוויון, נשאר הסדר שבקבלה.
 function mainItem(items) {
   if (!items?.length) return null;
-  return items.reduce((best, it) => ((typeof it.price === "number" ? it.price : -1) > (typeof best.price === "number" ? best.price : -1) ? it : best), items[0]);
+  return items.reduce((best, it) => (priceValue(it.price) > priceValue(best.price) ? it : best), items[0]);
+}
+
+// מחיר כמספר, גם כשנשמר כטקסט ("1,299 ₪"); בלי מחיר: -1
+function priceValue(p) {
+  if (typeof p === "number") return Number.isFinite(p) ? p : -1;
+  if (typeof p !== "string") return -1;
+  const n = Number(p.replace(/[^\d.]/g, ""));
+  return p.trim() && Number.isFinite(n) ? n : -1;
 }
 
 // תגית אחריות לקבלה: המוצר שהאחריות שלו תיגמר הכי קרוב מבין אלה שעדיין בתוקף; אם כולן פגו, "פגה"
@@ -903,9 +911,10 @@ function openDetail(id) {
 function renderDetail(r) {
   $("detail-edit").href = `#/r/${r.id}/edit`;
   $("detail-category").textContent = categoryName(r.categoryId);
-  const items = itemsOf(r);
+  // מהיקר לזול, כך שהמוצר הראשי מופיע ראשון
+  const items = [...itemsOf(r)].sort((a, b) => priceValue(b.price) - priceValue(a.price));
   const start = toDate(r.purchaseDate);
-  $("detail-title").textContent = items.length > 1 ? (r.store || "קבלה") : (mainItem(items)?.name || "ללא שם");
+  $("detail-title").textContent = mainItem(items)?.name || r.productName || r.store || "ללא שם";
   $("detail-amount").textContent = fmtAmount(r.amount, r.currency || "ILS");
 
   // מוצרים, לכל אחד האחריות שלו
