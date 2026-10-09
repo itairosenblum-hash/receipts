@@ -14,8 +14,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=5">
-<script type="module" src="app.js?v=5"></script>
+<link rel="stylesheet" href="app.css?v=6">
+<script type="module" src="app.js?v=6"></script>
 </head>
 <body>
 
@@ -112,14 +112,19 @@
   </div>
 
   <form id="receipt-form" class="card form" novalidate>
-    <label class="field">מוצר
-      <input name="productName" required maxlength="120" placeholder="למשל: מקרר LG 600 ליטר">
-    </label>
+    <div id="items-block" class="items-block">
+      <div class="items-head">
+        <span class="items-title">מוצרים</span>
+        <span id="items-count" class="muted"></span>
+      </div>
+      <div id="items-list" class="items-list"></div>
+      <button type="button" id="btn-add-item" class="btn-secondary">+ הוספת מוצר</button>
+    </div>
     <label class="field">חנות
       <input name="store" maxlength="80">
     </label>
     <div class="grid-2">
-      <label class="field">סכום (₪)
+      <label class="field">סכום כולל (₪)
         <input name="amount" type="number" inputmode="decimal" min="0" step="0.01">
       </label>
       <label class="field">קטגוריה
@@ -136,16 +141,6 @@
     </div>
     <label class="field">תגיות (מופרדות בפסיק)
       <input name="tags" placeholder="מטבח, מתנה">
-    </label>
-    <div class="warranty-box">
-      <label class="field inline">אחריות
-        <input name="warrantyMonths" type="number" inputmode="numeric" min="0" max="240" class="short">
-        חודשים
-      </label>
-      <span id="warranty-end" class="muted"></span>
-    </div>
-    <label class="field">מספר סידורי (לא חובה)
-      <input name="serialNumber" maxlength="80" placeholder="מופיע על מדבקת המוצר" dir="auto">
     </label>
     <label class="field">הערות
       <textarea name="notes" rows="3" maxlength="1000"></textarea>

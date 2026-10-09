@@ -231,7 +231,28 @@ a.btn-secondary, a.btn-primary { display: inline-flex; align-items: center; just
 .add-file { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
 .add-file select { height: 46px; border-radius: 10px; border: 1px solid #D9D5CC; font: inherit; font-size: 15px; background: var(--surface); color: var(--ink); padding: 0 8px; }
 
+/* Products editor */
+.items-block { display: flex; flex-direction: column; gap: 10px; }
+.items-head { display: flex; justify-content: space-between; align-items: baseline; }
+.items-title { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.items-list { display: flex; flex-direction: column; gap: 10px; }
+.item-card {
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+  display: flex; flex-direction: column; gap: 10px; background: var(--bg);
+}
+.item-top { display: flex; align-items: flex-end; gap: 6px; }
+.item-remove { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: 16px; flex: none; }
+.item-end { margin-top: -4px; font-size: 13px; }
+.items-block.uncertain .item-card { border: 2px solid #D97706; background: #FFFBF3; }
+.items-block.uncertain::after { content: "לא כל המוצרים זוהו בוודאות, כדאי לבדוק מול הקבלה"; font-size: 12px; color: var(--warn-ink); }
+.more-items { color: var(--muted); font-weight: 600; font-size: 13px; }
+
 /* Detail */
+.detail-item { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
+.detail-item + .detail-item { border-top: 1px solid var(--line-soft); padding-top: 14px; }
+.detail-item-head { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; font-size: 16px; }
+.detail-item-price { font-family: 'Rubik', sans-serif; font-weight: 500; white-space: nowrap; }
+.small { font-size: 13px; }
 .detail-head { display: flex; flex-direction: column; gap: 4px; }
 .detail-head h1 { font-size: 26px; }
 .eyebrow { font-size: 13px; font-weight: 700; color: var(--accent); }

@@ -108,20 +108,36 @@ function addMonths(ms, months) {
 
 /* ---------- validation ---------- */
 
+const numOrNull = (v) => (v === null || v === "" || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+
+// קבלה מכילה רשימת מוצרים; לכל מוצר אחריות משלו. השדות העליונים (productName, warrantyEnd) הם סיכום לתצוגה ולחיפוש.
 function cleanReceipt(r) {
   if (!r || typeof r !== "object") throw new HttpsError("invalid-argument", "נתוני קבלה חסרים");
-  const productName = String(r.productName || "").trim().slice(0, 120);
-  if (!productName) throw new HttpsError("invalid-argument", "חסר שם מוצר");
   const purchaseDate = Number(r.purchaseDate);
   if (!Number.isFinite(purchaseDate)) throw new HttpsError("invalid-argument", "תאריך לא תקין");
-  const amount = r.amount === null || r.amount === "" || r.amount === undefined ? null : Number(r.amount);
-  if (amount !== null && !Number.isFinite(amount)) throw new HttpsError("invalid-argument", "סכום לא תקין");
-  const warrantyMonths = Math.max(0, Math.min(240, parseInt(r.warrantyMonths, 10) || 0));
+  const amount = numOrNull(r.amount);
+
+  const rawItems = Array.isArray(r.items) && r.items.length ? r.items : [r];
+  const items = rawItems.slice(0, 30).map((it) => {
+    const warrantyMonths = Math.max(0, Math.min(240, parseInt(it?.warrantyMonths, 10) || 0));
+    return {
+      name: String(it?.name ?? it?.productName ?? "").trim().slice(0, 120),
+      price: numOrNull(it?.price),
+      warrantyMonths,
+      warrantyEnd: warrantyMonths ? Timestamp.fromMillis(addMonths(purchaseDate, warrantyMonths)) : null,
+      serialNumber: String(it?.serialNumber || "").trim().slice(0, 80)
+    };
+  }).filter((it) => it.name);
+  if (!items.length) throw new HttpsError("invalid-argument", "חסר שם מוצר");
+
+  const ends = items.map((it) => it.warrantyEnd?.toMillis()).filter(Boolean);
   const tags = Array.isArray(r.tags)
     ? [...new Set(r.tags.map((t) => String(t).trim().slice(0, 30)).filter(Boolean))].slice(0, 10)
     : [];
   return {
-    productName,
+    productName: items[0].name,
+    itemNames: items.map((it) => it.name),
+    items,
     store: String(r.store || "").trim().slice(0, 80),
     amount,
     currency: /^[A-Z]{3}$/.test(r.currency) ? r.currency : "ILS",
@@ -129,9 +145,7 @@ function cleanReceipt(r) {
     hasTime: !!r.hasTime,
     categoryId: String(r.categoryId || "other").slice(0, 40),
     tags,
-    warrantyMonths,
-    warrantyEnd: warrantyMonths ? Timestamp.fromMillis(addMonths(purchaseDate, warrantyMonths)) : null,
-    serialNumber: String(r.serialNumber || "").trim().slice(0, 80),
+    warrantyEnd: ends.length ? Timestamp.fromMillis(Math.max(...ends)) : null,
     notes: String(r.notes || "").trim().slice(0, 1000)
   };
 }
@@ -302,47 +316,61 @@ export const driveCallback = onRequest({ secrets: SECRETS }, async (req, res) =>
 const SCAN_INSTRUCTIONS = `You extract structured data from purchase receipts and tax invoices, usually Israeli and in Hebrew (קבלה, חשבונית מס, חשבונית מס/קבלה).
 Rules:
 - store: the business name as printed (Hebrew if printed in Hebrew). Drop legal suffixes like בע"מ unless they are part of the brand.
-- productName: the main durable product bought, short and specific, in Hebrew with brand and model as printed (for example "מקרר LG 600 ליטר"). With several items, pick the most expensive durable item. Ignore delivery, installation, bags and extended-warranty lines.
+- items: every product line the customer bought, in the order printed. One entry per distinct product (merge quantity lines; price = that line's total).
+  Skip lines that are not products: delivery, installation, bags, fees, deposits, rounding, discounts, coupons, payment lines and VAT lines.
+  A purchased extended warranty is not a product: apply its period to the product it covers.
+  - name: short and specific, in Hebrew with brand and model as printed (for example "מקרר LG 600 ליטר").
+  - price: the line total as a number, or null.
+  - warrantyMonths: ONLY if the document explicitly states a warranty period for that product (אחריות X שנים / חודשים). Then warrantyFromReceipt=true. Otherwise warrantyMonths=null and warrantyFromReceipt=false. Never estimate or use a typical value.
+  - serialNumber: only if printed for that product (מס' סידורי, S/N, IMEI), else null.
 - amount: the total actually paid including VAT (סה"כ לתשלום), as a number.
 - currency: ISO code. ₪ / ש"ח / NIS = ILS.
 - purchaseDate: YYYY-MM-DD. Israeli receipts print dates as DD/MM/YY or DD/MM/YYYY (day first).
 - purchaseTime: HH:MM in 24h, or null.
-- categoryId: exactly one of the category ids given. Follow the user's past corrections when a similar product appears.
+- categoryId: exactly one of the category ids given, for the receipt as a whole (by its main product). Follow the user's past corrections when a similar product appears.
 - tags: up to 3 short Hebrew tags useful for search (room, use, occasion). Prefer existing tags when they fit.
-- warrantyMonths: ONLY if the document explicitly states a warranty period (אחריות X שנים / חודשים, including a purchased extended warranty). Then set warrantyFromReceipt=true. If no period is printed, warrantyMonths must be null and warrantyFromReceipt=false. Never estimate or use a typical value.
-- serialNumber: only if printed (מס' סידורי, S/N, IMEI), else null.
-- Use null for anything not on the document. Never invent dates or amounts.
+- Use null for anything not on the document. Never invent dates, amounts or products.
 - confidence: 0 to 1 per field, honest. Use below 0.7 when the text is blurry, cut off or ambiguous.`;
 
 const SCAN_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     store: { type: Type.STRING, nullable: true },
-    productName: { type: Type.STRING, nullable: true },
+    items: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          price: { type: Type.NUMBER, nullable: true },
+          warrantyMonths: { type: Type.INTEGER, nullable: true },
+          warrantyFromReceipt: { type: Type.BOOLEAN },
+          serialNumber: { type: Type.STRING, nullable: true }
+        },
+        required: ["name", "price", "warrantyMonths", "warrantyFromReceipt"],
+        propertyOrdering: ["name", "price", "warrantyMonths", "warrantyFromReceipt", "serialNumber"]
+      }
+    },
     amount: { type: Type.NUMBER, nullable: true },
     currency: { type: Type.STRING, nullable: true },
     purchaseDate: { type: Type.STRING, nullable: true, description: "YYYY-MM-DD" },
     purchaseTime: { type: Type.STRING, nullable: true, description: "HH:MM" },
     categoryId: { type: Type.STRING },
     tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-    warrantyMonths: { type: Type.INTEGER, nullable: true },
-    warrantyFromReceipt: { type: Type.BOOLEAN },
-    serialNumber: { type: Type.STRING, nullable: true },
     confidence: {
       type: Type.OBJECT,
       properties: {
         store: { type: Type.NUMBER },
-        productName: { type: Type.NUMBER },
+        items: { type: Type.NUMBER },
         amount: { type: Type.NUMBER },
         purchaseDate: { type: Type.NUMBER },
         purchaseTime: { type: Type.NUMBER },
-        categoryId: { type: Type.NUMBER },
-        warrantyMonths: { type: Type.NUMBER }
+        categoryId: { type: Type.NUMBER }
       }
     }
   },
-  required: ["store", "productName", "amount", "purchaseDate", "categoryId", "tags", "warrantyMonths", "warrantyFromReceipt", "confidence"],
-  propertyOrdering: ["store", "productName", "amount", "currency", "purchaseDate", "purchaseTime", "categoryId", "tags", "warrantyMonths", "warrantyFromReceipt", "serialNumber", "confidence"]
+  required: ["store", "items", "amount", "purchaseDate", "categoryId", "tags", "confidence"],
+  propertyOrdering: ["store", "items", "amount", "currency", "purchaseDate", "purchaseTime", "categoryId", "tags", "confidence"]
 };
 
 function cleanAi(ai) {
@@ -351,12 +379,13 @@ function cleanAi(ai) {
   return {
     model: str(ai.model, 60),
     store: str(ai.store),
-    productName: str(ai.productName),
-    amount: Number.isFinite(Number(ai.amount)) && ai.amount !== null ? Number(ai.amount) : null,
+    items: Array.isArray(ai.items)
+      ? ai.items.slice(0, 30).map((it) => ({ name: str(it?.name), price: numOrNull(it?.price), warrantyMonths: numOrNull(it?.warrantyMonths) }))
+      : [],
+    amount: numOrNull(ai.amount),
     purchaseDate: str(ai.purchaseDate, 10),
     purchaseTime: str(ai.purchaseTime, 5),
-    categoryId: str(ai.categoryId, 40),
-    warrantyMonths: Number.isFinite(Number(ai.warrantyMonths)) && ai.warrantyMonths !== null ? Number(ai.warrantyMonths) : null
+    categoryId: str(ai.categoryId, 40)
   };
 }
 
@@ -419,16 +448,18 @@ export const scanReceipt = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 1
   return {
     model: GEMINI_MODEL.value(),
     store: result.store || null,
-    productName: result.productName || null,
+    items: (Array.isArray(result.items) ? result.items : []).slice(0, 30).map((it) => ({
+      name: String(it?.name || "").trim(),
+      price: typeof it?.price === "number" && it.price >= 0 ? it.price : null,
+      warrantyMonths: it?.warrantyFromReceipt && Number.isInteger(it?.warrantyMonths) && it.warrantyMonths > 0 && it.warrantyMonths <= 240 ? it.warrantyMonths : null,
+      serialNumber: it?.serialNumber || null
+    })).filter((it) => it.name),
     amount: typeof result.amount === "number" && result.amount >= 0 ? result.amount : null,
     currency: valid(/^[A-Z]{3}$/, result.currency) || "ILS",
     purchaseDate: date && !isNaN(Date.parse(date)) ? date : null,
     purchaseTime: valid(/^([01]\d|2[0-3]):[0-5]\d$/, result.purchaseTime),
     categoryId: ids.includes(result.categoryId) ? result.categoryId : "other",
     tags: Array.isArray(result.tags) ? result.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 3) : [],
-    warrantyMonths: result.warrantyFromReceipt && Number.isInteger(result.warrantyMonths) && result.warrantyMonths > 0 && result.warrantyMonths <= 240 ? result.warrantyMonths : null,
-    warrantyFromReceipt: !!result.warrantyFromReceipt,
-    serialNumber: result.serialNumber || null,
     confidence: result.confidence || {}
   };
 });

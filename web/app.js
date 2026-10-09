@@ -5,7 +5,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, writeBatch,
-  collection, query, orderBy, arrayUnion, arrayRemove, Timestamp, serverTimestamp
+  collection, query, orderBy, arrayUnion, arrayRemove, Timestamp, serverTimestamp, deleteField
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
@@ -113,13 +113,34 @@ function addMonths(ms, months) {
   return d.getTime();
 }
 
-function warrantyInfo(r) {
-  const end = toDate(r.warrantyEnd);
+// מצב אחריות לתאריך סיום אחד
+function warrantyStatus(endValue) {
+  const end = toDate(endValue);
   if (!end) return null;
   const days = Math.ceil((end - new Date()) / 86400000);
   if (days < 0) return { days, end, text: "האחריות פגה", cls: "off" };
   if (days <= 30) return { days, end, text: `פגה בעוד ${days} יום`, cls: "soon" };
   return { days, end, text: `אחריות עד ${pad(end.getMonth() + 1)}.${end.getFullYear()}`, cls: "ok" };
+}
+
+// רשימת המוצרים של קבלה. קבלות ישנות (לפני תמיכה בכמה מוצרים) הופכות למוצר יחיד.
+function itemsOf(r) {
+  if (Array.isArray(r.items) && r.items.length) return r.items;
+  return [{
+    name: r.productName || "",
+    price: typeof r.amount === "number" ? r.amount : null,
+    warrantyMonths: r.warrantyMonths || 0,
+    warrantyEnd: r.warrantyEnd || null,
+    serialNumber: r.serialNumber || ""
+  }];
+}
+
+// תגית אחריות לקבלה: המוצר שהאחריות שלו תיגמר הכי קרוב מבין אלה שעדיין בתוקף; אם כולן פגו, "פגה"
+function warrantyInfo(r) {
+  const states = itemsOf(r).map((it) => warrantyStatus(it.warrantyEnd)).filter(Boolean);
+  if (!states.length) return null;
+  const active = states.filter((s) => s.days >= 0).sort((a, b) => a.days - b.days);
+  return active[0] || states.sort((a, b) => b.days - a.days)[0];
 }
 
 const categoryName = (id) => categories.find((c) => c.id === id)?.name || "";
@@ -339,15 +360,19 @@ function renderReceipts() {
   const term = norm($("search").value);
   const list = receipts.filter((r) => {
     if (!term) return true;
-    return [r.productName, r.store, categoryName(r.categoryId), ...(r.tags || [])]
+    return [...itemsOf(r).map((it) => it.name), ...itemsOf(r).map((it) => it.serialNumber), r.store, categoryName(r.categoryId), ...(r.tags || [])]
       .filter(Boolean).some((s) => String(s).toLowerCase().includes(term));
   });
 
   $("receipts").replaceChildren(...list.map((r) => {
     const w = warrantyInfo(r);
+    const items = itemsOf(r);
     return el("a", { class: "receipt", href: `#/r/${r.id}` },
       el("div", { class: "receipt-main" },
-        el("div", { class: "receipt-title", text: r.productName || "ללא שם" }),
+        el("div", { class: "receipt-title" },
+          items[0]?.name || r.productName || "ללא שם",
+          items.length > 1 && el("span", { class: "more-items", text: ` +${items.length - 1}` })
+        ),
         el("div", { class: "receipt-sub", text: [r.store, fmtDate(toDate(r.purchaseDate))].filter(Boolean).join(" · ") }),
         w && el("span", { class: "tag tag-" + w.cls, text: w.text })
       ),
@@ -367,16 +392,16 @@ $("search").addEventListener("input", renderReceipts);
 
 let editingId = null;
 let pendingFiles = [];
-let warrantyTouched = false;
 let aiResult = null;
 let scanning = false;
 let scanSeq = 0;
+let formItems = [];
 const userEdited = new Set();
 const form = $("receipt-form");
 const CONFIDENCE_FIELDS = {
-  store: "store", productName: "productName", amount: "amount", purchaseDate: "date",
-  purchaseTime: "time", categoryId: "categoryId", warrantyMonths: "warrantyMonths"
+  store: "store", amount: "amount", purchaseDate: "date", purchaseTime: "time", categoryId: "categoryId"
 };
+const blankItem = () => ({ name: "", price: null, warrantyMonths: null, serialNumber: "" });
 
 function fillCategorySelect() {
   const sel = $("category-select");
@@ -399,7 +424,6 @@ function openEdit(id) {
   editingId = id;
   pendingFiles.forEach((f) => f.previewUrl && URL.revokeObjectURL(f.previewUrl));
   pendingFiles = [];
-  warrantyTouched = !!r;
   form.reset();
   fillCategorySelect();
   $("form-error").hidden = true;
@@ -416,35 +440,82 @@ function openEdit(id) {
   const f = form.elements;
   if (r) {
     const d = toDate(r.purchaseDate) || new Date();
-    f.productName.value = r.productName || "";
     f.store.value = r.store || "";
     f.amount.value = typeof r.amount === "number" ? r.amount : "";
     f.categoryId.value = r.categoryId || "";
     f.date.value = isoDate(d);
     f.time.value = r.hasTime ? fmtTime(d) : "";
     f.tags.value = (r.tags || []).join(", ");
-    f.warrantyMonths.value = r.warrantyMonths || "";
-    f.serialNumber.value = r.serialNumber || "";
     f.notes.value = r.notes || "";
+    formItems = itemsOf(r).map((it) => ({
+      name: it.name || "",
+      price: typeof it.price === "number" ? it.price : null,
+      warrantyMonths: it.warrantyMonths || null,
+      serialNumber: it.serialNumber || ""
+    }));
   } else {
     f.date.value = isoDate(new Date());
+    formItems = [blankItem()];
   }
   renderPendingFiles();
-  updateWarrantyEnd();
+  renderItems();
   show("edit");
 }
 
-function updateWarrantyEnd() {
-  const f = form.elements;
-  const months = parseInt(f.warrantyMonths.value, 10);
-  const out = $("warranty-end");
-  if (!months || !f.date.value) { out.textContent = ""; return; }
-  const end = new Date(addMonths(new Date(f.date.value + "T12:00").getTime(), months));
-  out.textContent = `בתוקף עד ${fmtDate(end)}`;
+/* ---------- products editor ---------- */
+
+function itemEndText(months) {
+  const date = form.elements.date.value;
+  if (!months || !date) return "";
+  return `בתוקף עד ${fmtDate(new Date(addMonths(new Date(date + "T12:00").getTime(), months)))}`;
 }
 
-form.elements.warrantyMonths.addEventListener("input", () => { warrantyTouched = true; updateWarrantyEnd(); });
-form.elements.date.addEventListener("input", updateWarrantyEnd);
+function renderItems() {
+  const box = $("items-list");
+  box.replaceChildren(...formItems.map((it, i) => {
+    const endEl = el("span", { class: "muted item-end", text: itemEndText(it.warrantyMonths) });
+    const onInput = (key, parse) => (e) => {
+      it[key] = parse ? parse(e.target.value) : e.target.value;
+      userEdited.add("items");
+      e.target.closest(".field")?.classList.remove("invalid");
+      $("items-block").classList.remove("uncertain");
+      if (key === "warrantyMonths") endEl.textContent = itemEndText(it.warrantyMonths);
+    };
+    const num = (v) => (v === "" ? null : Number(v));
+    const int = (v) => (parseInt(v, 10) > 0 ? parseInt(v, 10) : null);
+    return el("div", { class: "item-card" },
+      el("div", { class: "item-top" },
+        el("label", { class: "field grow" }, formItems.length > 1 ? `מוצר ${i + 1}` : "מוצר",
+          el("input", { value: it.name, maxlength: "120", placeholder: "למשל: מקרר LG 600 ליטר", oninput: onInput("name") })),
+        formItems.length > 1 && el("button", {
+          type: "button", class: "icon-btn item-remove", "aria-label": `הסרת מוצר ${i + 1}`,
+          onclick: () => { formItems.splice(i, 1); userEdited.add("items"); renderItems(); }
+        }, el("span", { "aria-hidden": "true", text: "✕" }))
+      ),
+      el("div", { class: "grid-2" },
+        el("label", { class: "field" }, "מחיר (₪)",
+          el("input", { type: "number", inputmode: "decimal", min: "0", step: "0.01", value: it.price ?? "", oninput: onInput("price", num) })),
+        el("label", { class: "field" }, "אחריות (חודשים)",
+          el("input", { type: "number", inputmode: "numeric", min: "0", max: "240", value: it.warrantyMonths ?? "", placeholder: "לא ידוע", oninput: onInput("warrantyMonths", int) }))
+      ),
+      endEl,
+      el("label", { class: "field" }, "מספר סידורי (לא חובה)",
+        el("input", { value: it.serialNumber, maxlength: "80", dir: "auto", oninput: onInput("serialNumber") }))
+    );
+  }));
+  $("items-count").textContent = formItems.length > 1 ? `${formItems.length} מוצרים` : "";
+}
+
+$("btn-add-item").addEventListener("click", () => {
+  formItems.push(blankItem());
+  userEdited.add("items");
+  renderItems();
+  $("items-list").lastElementChild?.querySelector("input")?.focus();
+});
+
+form.elements.date.addEventListener("input", () => {
+  $("items-list").querySelectorAll(".item-end").forEach((n, i) => { n.textContent = itemEndText(formItems[i]?.warrantyMonths); });
+});
 
 async function addPendingFiles(fileList) {
   for (const file of fileList) {
@@ -525,28 +596,33 @@ function applyScan(d, force) {
     if (!force && userEdited.has(name)) return;
     f[name].value = value;
   };
-  set("productName", d.productName);
   set("store", d.store);
   set("amount", d.amount);
   set("date", d.purchaseDate);
   set("time", d.purchaseTime);
   if (d.categoryId && categories.some((c) => c.id === d.categoryId)) set("categoryId", d.categoryId);
   if (d.tags?.length) set("tags", d.tags.join(", "));
-  if (d.warrantyMonths != null && (force || !userEdited.has("warrantyMonths"))) {
-    f.warrantyMonths.value = d.warrantyMonths;
-    warrantyTouched = true;
+  if (d.items?.length && (force || !userEdited.has("items"))) {
+    formItems = d.items.map((it) => ({
+      name: it.name || "",
+      price: typeof it.price === "number" ? it.price : null,
+      warrantyMonths: it.warrantyMonths || null,
+      serialNumber: it.serialNumber || ""
+    }));
   }
-  set("serialNumber", d.serialNumber);
-  updateWarrantyEnd();
+  renderItems();
 
   // סימון שדות שה-AI לא בטוח בהם, או שלא מצא בכלל
   form.querySelectorAll(".uncertain").forEach((n) => n.classList.remove("uncertain"));
   const conf = d.confidence || {};
   for (const [key, name] of Object.entries(CONFIDENCE_FIELDS)) {
     if (userEdited.has(name) && !force) continue;
-    const missing = ["productName", "amount", "purchaseDate"].includes(key) && d[key] == null;
+    const missing = ["amount", "purchaseDate"].includes(key) && d[key] == null;
     const low = d[key] != null && typeof conf[key] === "number" && conf[key] < 0.7;
     if (missing || low) f[name].closest(".field")?.classList.add("uncertain");
+  }
+  if (!d.items?.length || (typeof conf.items === "number" && conf.items < 0.7)) {
+    $("items-block").classList.add("uncertain");
   }
 }
 
@@ -601,7 +677,13 @@ form.addEventListener("submit", async (ev) => {
   form.querySelectorAll(".invalid").forEach((n) => n.classList.remove("invalid"));
 
   const problems = [];
-  if (!f.productName.value.trim()) { problems.push("שם מוצר"); f.productName.closest(".field").classList.add("invalid"); }
+  const items = formItems
+    .map((it) => ({ ...it, name: it.name.trim(), serialNumber: (it.serialNumber || "").trim() }))
+    .filter((it) => it.name);
+  if (!items.length) {
+    problems.push("שם מוצר");
+    $("items-list").querySelector("input")?.closest(".field")?.classList.add("invalid");
+  }
   if (!f.date.value) { problems.push("תאריך"); f.date.closest(".field").classList.add("invalid"); }
   if (!editingId && !pendingFiles.length) problems.push("לפחות קובץ אחד");
   if (problems.length) {
@@ -619,9 +701,8 @@ form.addEventListener("submit", async (ev) => {
 
   const hasTime = !!f.time.value;
   const purchaseMs = new Date(`${f.date.value}T${hasTime ? f.time.value : "12:00"}`).getTime();
-  const warrantyMonths = parseInt(f.warrantyMonths.value, 10) || 0;
   const receipt = {
-    productName: f.productName.value.trim(),
+    items,
     store: f.store.value.trim(),
     amount: f.amount.value === "" ? null : Number(f.amount.value),
     currency: "ILS",
@@ -629,8 +710,6 @@ form.addEventListener("submit", async (ev) => {
     hasTime,
     categoryId: f.categoryId.value || "other",
     tags: f.tags.value.split(/[,،]/).map((t) => t.trim()).filter(Boolean),
-    warrantyMonths,
-    serialNumber: f.serialNumber.value.trim(),
     notes: f.notes.value.trim()
   };
 
@@ -638,10 +717,23 @@ form.addEventListener("submit", async (ev) => {
   try {
     if (editingId) {
       busy("שומר…");
+      const savedItems = items.map((it) => ({
+        name: it.name,
+        price: typeof it.price === "number" && Number.isFinite(it.price) ? it.price : null,
+        warrantyMonths: it.warrantyMonths || 0,
+        warrantyEnd: it.warrantyMonths ? Timestamp.fromMillis(addMonths(purchaseMs, it.warrantyMonths)) : null,
+        serialNumber: it.serialNumber
+      }));
+      const ends = items.filter((it) => it.warrantyMonths).map((it) => addMonths(purchaseMs, it.warrantyMonths));
       await updateDoc(doc(db, "receipts", editingId), {
         ...receipt,
+        items: savedItems,
+        productName: savedItems[0].name,
+        itemNames: savedItems.map((it) => it.name),
         purchaseDate: Timestamp.fromMillis(purchaseMs),
-        warrantyEnd: warrantyMonths ? Timestamp.fromMillis(addMonths(purchaseMs, warrantyMonths)) : null,
+        warrantyEnd: ends.length ? Timestamp.fromMillis(Math.max(...ends)) : null,
+        warrantyMonths: deleteField(),
+        serialNumber: deleteField(),
         updatedAt: serverTimestamp()
       });
       location.hash = `#/r/${editingId}`;
@@ -694,33 +786,47 @@ function openDetail(id) {
 function renderDetail(r) {
   $("detail-edit").href = `#/r/${r.id}/edit`;
   $("detail-category").textContent = categoryName(r.categoryId);
-  $("detail-title").textContent = r.productName || "ללא שם";
+  const items = itemsOf(r);
+  const start = toDate(r.purchaseDate);
+  $("detail-title").textContent = items.length > 1 ? (r.store || "קבלה") : (items[0]?.name || "ללא שם");
   $("detail-amount").textContent = fmtAmount(r.amount, r.currency || "ILS");
 
-  // אחריות
+  // מוצרים, לכל אחד האחריות שלו
   const box = $("detail-warranty");
-  const w = warrantyInfo(r);
-  const start = toDate(r.purchaseDate);
-  if (!w || !start) {
-    box.replaceChildren(el("div", { class: "warranty-head" }, el("b", { text: "אין אחריות רשומה" })));
-  } else {
-    const used = Math.min(100, Math.max(0, ((Date.now() - start) / (w.end - start)) * 100));
-    const left = w.days < 0 ? `פגה ב-${fmtDate(w.end)}`
-      : w.days <= 60 ? `נותרו ${w.days} ימים`
-      : `נותרו ${Math.floor(w.days / 30.44)} חודשים`;
-    const title = w.cls === "off" ? "האחריות פגה" : w.cls === "soon" ? "האחריות פגה בקרוב" : "אחריות בתוקף";
-    box.replaceChildren(
-      el("div", { class: "warranty-head" }, el("b", { text: title }), el("span", { class: "muted", text: `עד ${fmtDate(w.end)}` })),
-      el("div", { class: "progress" + (w.cls === "soon" ? " soon" : "") }, el("div", { style: `width:${used.toFixed(1)}%` })),
-      el("div", { class: "progress-meta" }, el("span", { text: left }), el("span", { text: `${r.warrantyMonths} חודשים בסך הכל` }))
-    );
-  }
+  box.replaceChildren(
+    items.length > 1 && el("h2", { text: `${items.length} מוצרים` }),
+    ...items.map((it) => {
+      const w = warrantyStatus(it.warrantyEnd);
+      let warrantyEls;
+      if (!w || !start) {
+        warrantyEls = [el("div", { class: "muted", text: "אחריות לא ידועה" })];
+      } else {
+        const used = Math.min(100, Math.max(0, ((Date.now() - start) / (w.end - start)) * 100));
+        const left = w.days < 0 ? `פגה ב-${fmtDate(w.end)}`
+          : w.days <= 60 ? `נותרו ${w.days} ימים`
+          : `נותרו ${Math.floor(w.days / 30.44)} חודשים`;
+        const title = w.cls === "off" ? "האחריות פגה" : w.cls === "soon" ? "האחריות פגה בקרוב" : "אחריות בתוקף";
+        warrantyEls = [
+          el("div", { class: "warranty-head" }, el("b", { text: title }), el("span", { class: "muted", text: `עד ${fmtDate(w.end)}` })),
+          el("div", { class: "progress" + (w.cls === "soon" ? " soon" : "") }, el("div", { style: `width:${used.toFixed(1)}%` })),
+          el("div", { class: "progress-meta" }, el("span", { text: left }), el("span", { text: `${it.warrantyMonths} חודשים בסך הכל` }))
+        ];
+      }
+      return el("div", { class: "detail-item" },
+        items.length > 1 && el("div", { class: "detail-item-head" },
+          el("span", { class: "detail-item-name", text: it.name }),
+          typeof it.price === "number" && el("span", { class: "detail-item-price", text: fmtAmount(it.price, r.currency || "ILS") })
+        ),
+        ...warrantyEls,
+        it.serialNumber && el("div", { class: "muted small", text: `מספר סידורי: ${it.serialNumber}` })
+      );
+    })
+  );
 
   // פרטים
   const rows = [
     ["חנות", r.store],
     ["תאריך", start ? fmtDate(start) + (r.hasTime ? ` · ${fmtTime(start)}` : "") : ""],
-    ["מספר סידורי", r.serialNumber],
     ["תגיות", (r.tags || []).join(", ")],
     ["הערות", r.notes],
     ["הועלה ע״י", r.createdBy]
