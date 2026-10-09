@@ -371,3 +371,13 @@ a.btn-secondary, a.btn-primary { display: inline-flex; align-items: center; just
 #btn-save.waiting .when-waiting { display: inline-block; }
 #btn-save.waiting .when-ready { display: none; }
 #btn-save:disabled { opacity: .7; cursor: default; }
+
+/* Duplicates */
+.banner-btn { border: 0; background: transparent; color: #5C3205; font: inherit; font-weight: 700; white-space: nowrap; cursor: pointer; text-decoration: underline; min-height: 36px; padding: 0 4px; }
+.tag-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-dup { background: #FDE2D2; color: #9A3412; }
+.dup-card { background: var(--warn-tint); color: #5C3205; border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.dup-card a { color: #5C3205; font-weight: 600; }
+.dup-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dup-actions .link-btn { color: #5C3205; text-decoration: underline; min-height: 36px; padding: 0; }
+.warn-text.small { font-size: 13px; }

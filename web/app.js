@@ -164,6 +164,54 @@ function warrantyInfo(r) {
   return active[0] || states.sort((a, b) => b.days - a.days)[0];
 }
 
+/* ---------- duplicates ---------- */
+// קבלה נחשבת כפולה כשאותו קובץ הועלה פעמיים, או כשהסכום והיום זהים וגם החנות (או מוצר) זהה.
+// "זו לא כפילות" נשמר ברשימת notDuplicate של הקבלה.
+const dayKey = (v) => { const d = toDate(v); return d ? isoDate(d) : ""; };
+const normText = (s) => String(s || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+
+function dupKeyOf(r) {
+  return {
+    id: r.id,
+    hashes: r.fileHashes || [],
+    amount: typeof r.amount === "number" ? r.amount : null,
+    day: dayKey(r.purchaseDate),
+    store: normText(r.store),
+    names: itemsOf(r).map((it) => normText(it.name)).filter(Boolean),
+    ignore: r.notDuplicate || []
+  };
+}
+
+function isDup(a, b) {
+  if (a.id && b.id && (a.ignore.includes(b.id) || b.ignore.includes(a.id))) return false;
+  if (a.hashes.some((h) => h && b.hashes.includes(h))) return true;
+  if (a.amount == null || b.amount == null || Math.abs(a.amount - b.amount) > 0.009) return false;
+  if (!a.day || a.day !== b.day) return false;
+  if (a.store && b.store) return a.store.includes(b.store) || b.store.includes(a.store);
+  return a.names.some((n) => b.names.includes(n));
+}
+
+const findDups = (cand, exceptId) => receipts.filter((r) => r.id !== exceptId && isDup(cand, dupKeyOf(r)));
+// כל חלק מבודד בכיוון משלו, כדי ששם עם אותיות לועזיות לא יערבב את סדר החלקים
+const describeReceipt = (r) => [mainItem(itemsOf(r))?.name || r.productName, fmtDate(toDate(r.purchaseDate)), fmtAmount(r.amount, r.currency || "ILS")]
+  .filter(Boolean).map((x) => `\u2068${x}\u2069`).join(" · ");
+
+// מפה של כל הכפילויות בין הקבלות השמורות: מזהה קבלה ← מזהי הקבלות שהיא נראית כפולה שלהן
+let dupMap = new Map();
+function computeDupMap() {
+  const keys = receipts.map(dupKeyOf);
+  dupMap = new Map();
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = i + 1; j < keys.length; j++) {
+      if (!isDup(keys[i], keys[j])) continue;
+      for (const [x, y] of [[keys[i].id, keys[j].id], [keys[j].id, keys[i].id]]) {
+        if (!dupMap.has(x)) dupMap.set(x, []);
+        dupMap.get(x).push(y);
+      }
+    }
+  }
+}
+
 const categoryName = (id) => categories.find((c) => c.id === id)?.name || "";
 
 // צבע ואייקון לכל קטגוריה. קטגוריה שאין לה עיצוב משלה מקבלת את העיצוב של "אחר".
@@ -412,7 +460,7 @@ function warrantyBucket(r) {
   if (!w) return "none";
   return w.cls === "off" ? "expired" : w.cls === "soon" ? "soon" : "valid";
 }
-const matchesBucket = (r, f) => f === "all" || (f === "valid" ? ["valid", "soon"].includes(warrantyBucket(r)) : warrantyBucket(r) === f);
+const matchesBucket = (r, f) => f === "all" || (f === "dups" ? dupMap.has(r.id) : (f === "valid" ? ["valid", "soon"].includes(warrantyBucket(r)) : warrantyBucket(r) === f));
 const receiptYear = (r) => toDate(r.purchaseDate)?.getFullYear();
 
 function fillFilterSelects() {
@@ -428,6 +476,7 @@ function fillFilterSelects() {
 }
 
 function renderReceipts() {
+  computeDupMap();
   fillFilterSelects();
   const term = norm($("search").value);
   const cat = $("filter-category").value;
@@ -452,6 +501,15 @@ function renderReceipts() {
   });
   $("filters").hidden = receipts.length === 0;
 
+  // התראה על קבלות כפולות, עם מעבר לתצוגה שלהן בלבד
+  const dupCount = dupMap.size;
+  const showingDups = listFilter === "dups";
+  $("dup-banner").hidden = !dupCount && !showingDups;
+  $("dup-banner-text").textContent = showingDups
+    ? (dupCount ? `מוצגות ${dupCount} קבלות שנראות כפולות` : "לא נשארו קבלות כפולות")
+    : `נמצאו ${dupCount} קבלות שנראות כפולות`;
+  $("dup-banner-btn").textContent = showingDups ? "הצגת הכל" : "הצגה";
+
   $("receipts").replaceChildren(...list.map((r) => {
     const w = warrantyInfo(r);
     const items = itemsOf(r);
@@ -463,7 +521,10 @@ function renderReceipts() {
           items.length > 1 && el("span", { class: "more-items", text: ` +${items.length - 1}` })
         ),
         el("div", { class: "receipt-sub", text: [r.store, fmtDate(toDate(r.purchaseDate))].filter(Boolean).join(" · ") }),
-        w && el("span", { class: "tag tag-" + w.cls, text: w.text })
+        (w || dupMap.has(r.id)) && el("div", { class: "tag-row" },
+          w && el("span", { class: "tag tag-" + w.cls, text: w.text }),
+          dupMap.has(r.id) && el("span", { class: "tag tag-dup", text: "כפולה?" })
+        )
       ),
       el("div", { class: "receipt-amount", text: fmtAmount(r.amount, r.currency || "ILS") })
     );
@@ -481,6 +542,11 @@ document.querySelectorAll(".filter-chip").forEach((btn) => btn.addEventListener(
   renderReceipts();
 }));
 $("filter-category").addEventListener("change", renderReceipts);
+$("dup-banner-btn").addEventListener("click", () => {
+  listFilter = listFilter === "dups" ? "all" : "dups";
+  renderReceipts();
+  window.scrollTo(0, 0);
+});
 $("filter-year").addEventListener("change", renderReceipts);
 
 $("search").addEventListener("input", renderReceipts);
@@ -776,6 +842,7 @@ function applyScan(d, force) {
   set("time", d.purchaseTime);
   if (d.categoryId && categories.some((c) => c.id === d.categoryId)) set("categoryId", d.categoryId);
   syncCategoryIcon();
+  queueMicrotask(updateDupWarning);
   if (d.tags?.length) set("tags", d.tags.join(", "));
   if (d.items?.length && (force || !userEdited.has("items"))) {
     formItems = d.items.map((it) => ({
@@ -835,15 +902,31 @@ function renderPendingFiles() {
     );
   }));
 
-  const dups = pendingFiles
-    .map((f) => receipts.find((r) => (r.fileHashes || []).includes(f.hash)))
-    .filter(Boolean);
+  updateDupWarning();
+}
+
+// התראה בטופס כשהקבלה שממלאים כבר קיימת (אותו קובץ, או אותם סכום, תאריך וחנות)
+function updateDupWarning() {
+  const f = form.elements;
+  const editing = editingId ? receipts.find((r) => r.id === editingId) : null;
+  const cand = {
+    id: editingId,
+    hashes: pendingFiles.map((p) => p.hash),
+    amount: parseMoney(f.amount.value),
+    day: f.date.value,
+    store: normText(f.store.value),
+    names: formItems.map((it) => normText(it.name)).filter(Boolean),
+    ignore: editing?.notDuplicate || []
+  };
+  const dups = findDups(cand, editingId);
   const warn = $("dup-warning");
   warn.hidden = !dups.length;
   if (dups.length) {
-    warn.textContent = `נראה שהקובץ כבר הועלה, בקבלה "${dups[0].productName}". אפשר להמשיך בכל זאת.`;
+    const sameFile = dups[0].fileHashes?.some((h) => cand.hashes.includes(h));
+    warn.textContent = `${sameFile ? "הקובץ הזה כבר הועלה" : "נראה שהקבלה הזו כבר קיימת"}: ${describeReceipt(dups[0])}${dups.length > 1 ? ` (ועוד ${dups.length - 1})` : ""}. אפשר לשמור בכל זאת.`;
   }
 }
+["store", "amount", "date"].forEach((name) => form.elements[name].addEventListener("input", updateDupWarning));
 
 form.addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -975,6 +1058,27 @@ function openDetail(id) {
 }
 
 function renderDetail(r) {
+  const twins = (dupMap.get(r.id) || []).map((id) => receipts.find((x) => x.id === id)).filter(Boolean);
+  const dupBox = $("detail-dup");
+  dupBox.hidden = !twins.length;
+  if (twins.length) {
+    dupBox.replaceChildren(
+      el("b", { text: twins.length > 1 ? "הקבלה הזו נראית כפולה של:" : "הקבלה הזו נראית כפולה של:" }),
+      ...twins.map((t) => el("a", { href: `#/r/${t.id}`, text: describeReceipt(t) })),
+      el("div", { class: "dup-actions" },
+        el("button", {
+          type: "button", class: "link-btn", text: "זו לא כפילות",
+          onclick: async () => {
+            try {
+              await updateDoc(doc(db, "receipts", r.id), { notDuplicate: arrayUnion(...twins.map((t) => t.id)) });
+              toast("סומן שזו לא כפילות");
+            } catch (e) { toast(errMsg(e)); }
+          }
+        }),
+        el("span", { class: "muted small", text: "או מחקו את המיותרת בתחתית המסך" })
+      )
+    );
+  }
   $("btn-whatsapp").href = whatsappHref(whatsappReceiptText(r));
   $("detail-edit").href = `#/r/${r.id}/edit`;
   const cst = catStyle(r.categoryId);
@@ -989,7 +1093,7 @@ function renderDetail(r) {
 
   // מוצרים, לכל אחד האחריות שלו
   const box = $("detail-warranty");
-  box.replaceChildren(
+  box.replaceChildren(...[
     items.length > 1 && el("h2", { text: `${items.length} מוצרים` }),
     ...items.map((it) => {
       const w = warrantyStatus(it.warrantyEnd);
@@ -1018,7 +1122,7 @@ function renderDetail(r) {
         it.serialNumber && el("div", { class: "muted small", text: `מספר סידורי: ${it.serialNumber}` })
       );
     })
-  );
+  ].filter(Boolean));
 
   // פרטים
   const rows = [
@@ -1532,6 +1636,18 @@ function pumpBulk() {
   }
 }
 
+function bulkDupKey(b) {
+  const ai = b.ai || {};
+  return {
+    hashes: b.file?.hash ? [b.file.hash] : [],
+    amount: typeof ai.amount === "number" ? ai.amount : null,
+    day: ai.purchaseDate || "",
+    store: normText(ai.store),
+    names: (ai.items || []).map((it) => normText(it.name)).filter(Boolean),
+    ignore: []
+  };
+}
+
 async function scanBulkItem(item) {
   item.status = "scanning";
   renderBulk();
@@ -1541,6 +1657,14 @@ async function scanBulkItem(item) {
     item.status = bulkComplete(res.data) ? "ready" : "review";
     item.scanFailed = false;
     delete item.error;
+    // כפילות לפי התוכן: מול הקבלות השמורות או מול קובץ אחר בייבוא הזה
+    const cand = bulkDupKey(item);
+    const dupR = findDups(cand)[0];
+    const dupB = !dupR && bulkItems.find((o) => o !== item && o.ai && !["removed", "dup", "error"].includes(o.status) && isDup(cand, bulkDupKey(o)));
+    if (dupR || dupB) {
+      item.status = "dup";
+      item.dupOf = dupR ? describeReceipt(dupR) : `${mainItem(dupB.ai.items)?.name || dupB.title} (בייבוא הזה)`;
+    }
   } catch (e) {
     item.status = "error";
     item.scanFailed = true;
@@ -1627,6 +1751,7 @@ function renderBulk() {
         sub && el("div", { class: "bulk-sub", text: sub }),
         el("span", { class: "chip " + cls }, spin && el("span", { class: "spinner small" }), label),
         b.error && el("div", { class: "error small", text: b.error }),
+        b.status === "dup" && b.dupOf && el("div", { class: "warn-text small", text: `נראית כפולה של: ${b.dupOf}` }),
         el("div", { class: "bulk-actions" },
           canRescan(b) && el("button", {
             type: "button", class: "link-btn", text: "סריקה חוזרת",

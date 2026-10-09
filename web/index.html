@@ -14,8 +14,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=18">
-<script type="module" src="app.js?v=22"></script>
+<link rel="stylesheet" href="app.css?v=19">
+<script type="module" src="app.js?v=23"></script>
 </head>
 <body>
 
@@ -84,6 +84,10 @@
         <select id="filter-year"></select>
       </label>
     </div>
+  </div>
+  <div id="dup-banner" class="banner dup-banner" hidden>
+    <span id="dup-banner-text"></span>
+    <button id="dup-banner-btn" type="button" class="banner-btn"></button>
   </div>
   <div id="drive-banner" class="banner" hidden>
     <span>הדרייב עוד לא מחובר, ולכן אי אפשר לשמור קבלות.</span>
@@ -196,6 +200,7 @@
     <h1 id="detail-title"></h1>
     <div id="detail-amount" class="big-amount"></div>
   </div>
+  <div id="detail-dup" class="dup-card" role="alert" hidden></div>
   <div id="detail-warranty" class="card"></div>
   <dl id="detail-rows" class="card rows"></dl>
   <div class="card">
