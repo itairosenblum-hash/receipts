@@ -864,6 +864,42 @@ function renderDetail(r) {
   )));
 }
 
+const PDFJS_BASE = "https://cdn.jsdelivr.net/npm/pdfjs-dist@6.4.299/legacy/build/";
+let pdfjsPromise = null;
+function loadPdfjs() {
+  pdfjsPromise ||= import(PDFJS_BASE + "pdf.min.mjs").then((lib) => {
+    const workerUrl = PDFJS_BASE + "pdf.worker.min.mjs";
+    lib.GlobalWorkerOptions.workerSrc = workerUrl;
+    // Worker חייב להיטען מאותו דומיין; עוטפים את הקובץ מה-CDN בקובץ מקומי זמני שמייבא אותו
+    try {
+      const shim = URL.createObjectURL(new Blob([`import "${workerUrl}";`], { type: "text/javascript" }));
+      lib.GlobalWorkerOptions.workerPort = new Worker(shim, { type: "module" });
+    } catch (e) {
+      console.warn("pdf worker fallback", e);
+    }
+    return lib;
+  });
+  return pdfjsPromise;
+}
+
+// מציג PDF כתמונות של כל העמודים. דפדפני Android לא מציגים PDF בתוך דף, ולכן מציירים אותו בעצמנו.
+async function renderPdf(bytes, container) {
+  const lib = await loadPdfjs();
+  const pdf = await lib.getDocument({ data: bytes }).promise;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const width = Math.max(320, container.clientWidth - 16);
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const page = await pdf.getPage(n);
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: (width * dpr) / base.width });
+    const canvas = el("canvas", { class: "pdf-page", "aria-label": `עמוד ${n} מתוך ${pdf.numPages}` });
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+    container.append(canvas);
+    await page.render({ canvas, canvasContext: canvas.getContext("2d"), viewport }).promise;
+  }
+}
+
 async function openFile(receiptId, f) {
   busy("טוען קובץ…");
   try {
@@ -872,14 +908,27 @@ async function openFile(receiptId, f) {
     const blob = new Blob([bytes], { type: res.data.mimeType });
     const url = URL.createObjectURL(blob);
     const body = $("viewer-body");
-    body.replaceChildren(res.data.mimeType.startsWith("image/")
-      ? el("img", { src: url, alt: f.name })
-      : el("iframe", { src: url, title: f.name }));
+    const isPdf = res.data.mimeType === "application/pdf";
+    body.classList.toggle("pdf", isPdf);
+    body.replaceChildren();
     $("viewer-title").textContent = f.name;
     $("viewer-download").href = url;
     $("viewer-download").setAttribute("download", f.name);
+    const drive = $("viewer-drive");
+    drive.hidden = !(isAdmin && f.webViewLink);
+    if (f.webViewLink) drive.href = f.webViewLink;
     $("viewer").hidden = false;
     $("viewer").dataset.url = url;
+    if (isPdf) {
+      try {
+        await renderPdf(bytes.slice(), body);
+      } catch (e) {
+        console.error(e);
+        body.replaceChildren(el("p", { class: "viewer-msg", text: "לא ניתן להציג את הקובץ כאן. אפשר להוריד אותו או לפתוח בדרייב." }));
+      }
+    } else {
+      body.append(el("img", { src: url, alt: f.name }));
+    }
   } catch (e) {
     toast(errMsg(e));
   } finally {
