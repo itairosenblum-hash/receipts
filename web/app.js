@@ -360,7 +360,7 @@ function renderReceipts() {
   const term = norm($("search").value);
   const list = receipts.filter((r) => {
     if (!term) return true;
-    return [...itemsOf(r).map((it) => it.name), ...itemsOf(r).map((it) => it.serialNumber), r.store, categoryName(r.categoryId), ...(r.tags || [])]
+    return [...itemsOf(r).flatMap((it) => [it.name, it.printedName, it.serialNumber]), r.store, categoryName(r.categoryId), ...(r.tags || [])]
       .filter(Boolean).some((s) => String(s).toLowerCase().includes(term));
   });
 
@@ -401,7 +401,7 @@ const form = $("receipt-form");
 const CONFIDENCE_FIELDS = {
   store: "store", amount: "amount", purchaseDate: "date", purchaseTime: "time", categoryId: "categoryId"
 };
-const blankItem = () => ({ name: "", price: null, warrantyMonths: null, serialNumber: "" });
+const blankItem = () => ({ name: "", printedName: "", price: null, warrantyMonths: null, serialNumber: "" });
 
 function fillCategorySelect() {
   const sel = $("category-select");
@@ -450,6 +450,7 @@ function openEdit(id) {
     f.notes.value = r.notes || "";
     formItems = itemsOf(r).map((it) => ({
       name: it.name || "",
+      printedName: it.printedName || "",
       price: typeof it.price === "number" ? it.price : null,
       warrantyMonths: it.warrantyMonths || null,
       serialNumber: it.serialNumber || ""
@@ -493,6 +494,7 @@ function renderItems() {
           onclick: () => { formItems.splice(i, 1); userEdited.add("items"); renderItems(); }
         }, el("span", { "aria-hidden": "true", text: "✕" }))
       ),
+      it.printedName && it.printedName !== it.name && el("div", { class: "muted small printed", text: `בקבלה: ${it.printedName}` }),
       el("div", { class: "grid-2" },
         el("label", { class: "field" }, "מחיר (₪)",
           el("input", { type: "number", inputmode: "decimal", min: "0", step: "0.01", value: it.price ?? "", oninput: onInput("price", num) })),
@@ -606,6 +608,7 @@ function applyScan(d, force) {
   if (d.items?.length && (force || !userEdited.has("items"))) {
     formItems = d.items.map((it) => ({
       name: it.name || "",
+      printedName: it.printedName || "",
       price: typeof it.price === "number" ? it.price : null,
       warrantyMonths: it.warrantyMonths || null,
       serialNumber: it.serialNumber || ""
@@ -720,6 +723,7 @@ form.addEventListener("submit", async (ev) => {
       busy("שומר…");
       const savedItems = items.map((it) => ({
         name: it.name,
+        printedName: it.printedName || "",
         price: typeof it.price === "number" && Number.isFinite(it.price) ? it.price : null,
         warrantyMonths: it.warrantyMonths || 0,
         warrantyEnd: it.warrantyMonths ? Timestamp.fromMillis(addMonths(purchaseMs, it.warrantyMonths)) : null,
@@ -730,7 +734,7 @@ form.addEventListener("submit", async (ev) => {
         ...receipt,
         items: savedItems,
         productName: savedItems[0].name,
-        itemNames: savedItems.map((it) => it.name),
+        itemNames: savedItems.flatMap((it) => [it.name, it.printedName].filter(Boolean)),
         purchaseDate: Timestamp.fromMillis(purchaseMs),
         warrantyEnd: ends.length ? Timestamp.fromMillis(Math.max(...ends)) : null,
         warrantyMonths: deleteField(),
@@ -827,6 +831,7 @@ function renderDetail(r) {
           el("span", { class: "detail-item-name", text: it.name }),
           typeof it.price === "number" && el("span", { class: "detail-item-price", text: fmtAmount(it.price, r.currency || "ILS") })
         ),
+        it.printedName && it.printedName !== it.name && el("div", { class: "muted small", text: `בקבלה: ${it.printedName}` }),
         ...warrantyEls,
         it.serialNumber && el("div", { class: "muted small", text: `מספר סידורי: ${it.serialNumber}` })
       );
@@ -1068,6 +1073,7 @@ function receiptFromAi(ai) {
   return {
     items: (ai.items || []).map((it) => ({
       name: it.name,
+      printedName: it.printedName || "",
       price: typeof it.price === "number" ? it.price : null,
       warrantyMonths: it.warrantyMonths || 0,
       serialNumber: it.serialNumber || ""

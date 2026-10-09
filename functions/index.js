@@ -122,6 +122,7 @@ function cleanReceipt(r) {
     const warrantyMonths = Math.max(0, Math.min(240, parseInt(it?.warrantyMonths, 10) || 0));
     return {
       name: String(it?.name ?? it?.productName ?? "").trim().slice(0, 120),
+      printedName: String(it?.printedName || "").trim().slice(0, 160),
       price: numOrNull(it?.price),
       warrantyMonths,
       warrantyEnd: warrantyMonths ? Timestamp.fromMillis(addMonths(purchaseDate, warrantyMonths)) : null,
@@ -136,7 +137,7 @@ function cleanReceipt(r) {
     : [];
   return {
     productName: items[0].name,
-    itemNames: items.map((it) => it.name),
+    itemNames: items.flatMap((it) => [it.name, it.printedName].filter(Boolean)),
     items,
     store: String(r.store || "").trim().slice(0, 80),
     amount,
@@ -333,7 +334,11 @@ Rules:
 - items: every product line the customer bought, in the order printed. One entry per distinct product (merge quantity lines; price = that line's total).
   Skip lines that are not products: delivery, installation, bags, fees, deposits, rounding, discounts, coupons, payment lines and VAT lines.
   A purchased extended warranty is not a product: apply its period to the product it covers.
-  - name: short and specific, in Hebrew with brand and model as printed (for example "מקרר LG 600 ליטר").
+  - name: a clear, recognizable product name a person would use: brand + product line + model + key variant (capacity, size, color).
+    Receipts often print only codes or specs (for example "12GB+512GB - כחול - F966BE"). Use your knowledge of model numbers to identify the product
+    (F966B is Samsung Galaxy Z Fold7, so "Samsung Galaxy Z Fold7 512GB כחול"). Write it in Hebrew where natural, keeping brand and model names in Latin letters.
+    If you cannot identify the product with confidence, use the printed text cleaned up, and lower confidence.items.
+  - printedName: the product line exactly as printed on the receipt.
   - price: the line total as a number, or null.
   - warrantyMonths: ONLY if the document explicitly states a warranty period for that product (אחריות X שנים / חודשים). Then warrantyFromReceipt=true. Otherwise warrantyMonths=null and warrantyFromReceipt=false. Never estimate or use a typical value.
   - serialNumber: only if printed for that product (מס' סידורי, S/N, IMEI), else null.
@@ -356,13 +361,14 @@ const SCAN_SCHEMA = {
         type: Type.OBJECT,
         properties: {
           name: { type: Type.STRING },
+          printedName: { type: Type.STRING, nullable: true },
           price: { type: Type.NUMBER, nullable: true },
           warrantyMonths: { type: Type.INTEGER, nullable: true },
           warrantyFromReceipt: { type: Type.BOOLEAN },
           serialNumber: { type: Type.STRING, nullable: true }
         },
-        required: ["name", "price", "warrantyMonths", "warrantyFromReceipt"],
-        propertyOrdering: ["name", "price", "warrantyMonths", "warrantyFromReceipt", "serialNumber"]
+        required: ["printedName", "name", "price", "warrantyMonths", "warrantyFromReceipt"],
+        propertyOrdering: ["printedName", "name", "price", "warrantyMonths", "warrantyFromReceipt", "serialNumber"]
       }
     },
     amount: { type: Type.NUMBER, nullable: true },
@@ -394,7 +400,7 @@ function cleanAi(ai) {
     model: str(ai.model, 60),
     store: str(ai.store),
     items: Array.isArray(ai.items)
-      ? ai.items.slice(0, 30).map((it) => ({ name: str(it?.name), price: numOrNull(it?.price), warrantyMonths: numOrNull(it?.warrantyMonths) }))
+      ? ai.items.slice(0, 30).map((it) => ({ name: str(it?.name), printedName: str(it?.printedName, 160), price: numOrNull(it?.price), warrantyMonths: numOrNull(it?.warrantyMonths) }))
       : [],
     amount: numOrNull(ai.amount),
     purchaseDate: str(ai.purchaseDate, 10),
@@ -469,7 +475,8 @@ export const scanReceipt = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 3
     model: GEMINI_MODEL.value(),
     store: result.store || null,
     items: (Array.isArray(result.items) ? result.items : []).slice(0, 30).map((it) => ({
-      name: String(it?.name || "").trim(),
+      name: String(it?.name || it?.printedName || "").trim(),
+      printedName: it?.printedName ? String(it.printedName).trim() : null,
       price: typeof it?.price === "number" && it.price >= 0 ? it.price : null,
       warrantyMonths: it?.warrantyFromReceipt && Number.isInteger(it?.warrantyMonths) && it.warrantyMonths > 0 && it.warrantyMonths <= 240 ? it.warrantyMonths : null,
       serialNumber: it?.serialNumber || null

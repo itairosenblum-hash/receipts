@@ -273,6 +273,7 @@ a.btn-secondary, a.btn-primary { display: inline-flex; align-items: center; just
 .item-top { display: flex; align-items: flex-end; gap: 6px; }
 .item-remove { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: 16px; flex: none; }
 .item-end { margin-top: -4px; font-size: 13px; }
+.printed { margin-top: -4px; overflow-wrap: anywhere; direction: rtl; }
 .items-block.uncertain .item-card { border: 2px solid #D97706; background: #FFFBF3; }
 .items-block.uncertain::after { content: "לא כל המוצרים זוהו בוודאות, כדאי לבדוק מול הקבלה"; font-size: 12px; color: var(--warn-ink); }
 .more-items { color: var(--muted); font-weight: 600; font-size: 13px; }
