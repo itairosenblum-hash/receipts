@@ -58,7 +58,8 @@ jobs:
         run: |
           set -euo pipefail
           for name in GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GEMINI_API_KEY; do
-            value="${!name}"
+            # מסיר רווחים ושורות ריקות שנכנסים בהעתקה מהטלפון (בערכים האלה אין רווחים לגיטימיים)
+            value="$(printf '%s' "${!name}" | tr -d '[:space:]')"
             if [ -z "$value" ]; then
               echo "::error::Missing repo secret $name (see README)"
               exit 1
