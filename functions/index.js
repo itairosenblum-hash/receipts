@@ -18,7 +18,7 @@ setGlobalOptions({ region: "europe-west1", maxInstances: 5 });
 const CLIENT_ID = defineSecret("GOOGLE_OAUTH_CLIENT_ID");
 const CLIENT_SECRET = defineSecret("GOOGLE_OAUTH_CLIENT_SECRET");
 const DRIVE_FOLDER_ID = defineString("DRIVE_FOLDER_ID", { default: "" });
-const APP_URL = defineString("APP_URL", { default: "https://itairosenblum-hash.github.io/Shopping/" });
+const APP_URL = defineString("APP_URL", { default: "https://itairosenblum-hash.github.io/receipts/" });
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 const GEMINI_MODEL = defineString("GEMINI_MODEL", { default: "gemini-3.8-flash" });
 
