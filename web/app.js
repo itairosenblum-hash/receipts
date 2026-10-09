@@ -950,7 +950,7 @@ function renderDrive() {
 $("btn-drive-connect").addEventListener("click", async () => {
   busy("פותח את Google…");
   try {
-    const res = await call("driveAuthUrl", 30000)();
+    const res = await call("driveAuthUrl", 30000)({ returnUrl: location.origin + location.pathname });
     location.href = res.data.url;
   } catch (e) {
     busy(null);

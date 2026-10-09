@@ -235,10 +235,22 @@ async function trashQuietly(drive, fileIds) {
 
 /* ---------- Drive connection (admin) ---------- */
 
+// האפליקציה מוגשת מכמה כתובות; חוזרים לזו שממנה התחיל החיבור, רק אם היא ברשימה המותרת
+function allowedReturnUrl(url) {
+  const allowed = [
+    APP_URL.value(),
+    `https://${projectId()}.web.app/`,
+    `https://${projectId()}.firebaseapp.com/`,
+    "https://itairosenblum-hash.github.io/receipts/"
+  ];
+  return allowed.find((a) => typeof url === "string" && url.split("#")[0] === a) || APP_URL.value();
+}
+
 export const driveAuthUrl = onCall({ secrets: SECRETS }, async (request) => {
   await requireAdmin(request);
   const state = crypto.randomBytes(24).toString("hex");
-  await OAUTH_STATE.set({ state, expiresAt: Date.now() + 10 * 60 * 1000 });
+  const returnUrl = allowedReturnUrl(request.data?.returnUrl);
+  await OAUTH_STATE.set({ state, returnUrl, expiresAt: Date.now() + 10 * 60 * 1000 });
   const url = oauthClient().generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
@@ -250,12 +262,14 @@ export const driveAuthUrl = onCall({ secrets: SECRETS }, async (request) => {
 });
 
 export const driveCallback = onRequest({ secrets: SECRETS }, async (req, res) => {
-  const back = (status) => res.redirect(`${APP_URL.value()}#/settings?drive=${status}`);
+  let returnUrl = APP_URL.value();
+  const back = (status) => res.redirect(`${returnUrl}#/settings?drive=${status}`);
   try {
     const { code, state, error } = req.query;
+    const saved = (await OAUTH_STATE.get()).data();
+    if (saved?.returnUrl) returnUrl = allowedReturnUrl(saved.returnUrl);
     if (error) return back("cancelled");
 
-    const saved = (await OAUTH_STATE.get()).data();
     await OAUTH_STATE.delete();
     if (!saved || saved.state !== state || saved.expiresAt < Date.now() || !code) return back("expired");
 

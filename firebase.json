@@ -10,7 +10,38 @@
       "source": "functions",
       "codebase": "default",
       "runtime": "nodejs22",
-      "ignore": ["node_modules", ".git", "*.log", ".secret.local"]
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.log",
+        ".secret.local"
+      ]
     }
-  ]
+  ],
+  "hosting": {
+    "public": "web",
+    "ignore": [
+      "**/.*"
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(html|js|css|webmanifest)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "/sw.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
+    ]
+  }
 }

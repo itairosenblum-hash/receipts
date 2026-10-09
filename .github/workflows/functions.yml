@@ -1,4 +1,4 @@
-name: Deploy Firebase (functions + rules)
+name: Deploy Firebase (functions + rules + hosting)
 # פריסה אוטומטית של ה-Cloud Functions וה-Rules בכל שינוי ב-main (גם ידנית: Run workflow).
 # נדרשים Secrets בריפו (עדכון שלהם נכנס לתוקף בפריסה הבאה): FIREBASE_SERVICE_ACCOUNT, GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GEMINI_API_KEY
 
@@ -7,6 +7,7 @@ on:
     branches: [main]
     paths:
       - "functions/**"
+      - "web/**"
       - "firestore.rules"
       - "storage.rules"
       - "firebase.json"
@@ -84,7 +85,7 @@ jobs:
       - name: Deploy
         run: |
           set +e
-          firebase deploy --only functions,firestore:rules --project "$PROJECT" --non-interactive --force 2>&1 | tee deploy.log
+          firebase deploy --only functions,firestore:rules,hosting --project "$PROJECT" --non-interactive --force 2>&1 | tee deploy.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             # מציג את סיבת הכישלון כהערה בסיכום הריצה
