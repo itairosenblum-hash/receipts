@@ -108,3 +108,7 @@ jobs:
             pols="${pols}${svc}: ${p}%0A"
           done
           echo "::notice title=invokers::${pols}"
+          logs="$(gcloud logging read 'resource.type="cloud_run_revision" AND severity>=ERROR' --project "$PROJECT" --freshness=2h --limit=8 \
+            --format='value(timestamp,resource.labels.service_name,jsonPayload.message,textPayload)' 2>&1 \
+            | cut -c1-600 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+          echo "::notice title=recent function errors::${logs:-none}"
