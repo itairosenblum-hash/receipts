@@ -1,0 +1,9 @@
+rules_version = '2';
+// הקבצים נשמרים ב-Google Drive, לא ב-Storage, ולכן הכל חסום
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
