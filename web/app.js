@@ -21,7 +21,7 @@ const accessRef = doc(db, "config", "access");
 const driveRef = doc(db, "config", "drive");
 
 const $ = (id) => document.getElementById(id);
-const VIEWS = ["loading", "login", "denied", "list", "edit", "detail", "settings"];
+const VIEWS = ["loading", "login", "denied", "list", "edit", "detail", "settings", "bulk"];
 const FILE_KINDS = { receipt: "קבלה", warranty: "תעודת אחריות", label: "מדבקה", other: "אחר" };
 const MAX_TOTAL_BYTES = 7 * 1024 * 1024;
 const DEFAULT_CATEGORIES = [
@@ -422,7 +422,8 @@ function openEdit(id) {
     return;
   }
   editingId = id;
-  pendingFiles.forEach((f) => f.previewUrl && URL.revokeObjectURL(f.previewUrl));
+  bulkEditId = null;
+  pendingFiles.forEach((f) => !f.bulk && f.previewUrl && URL.revokeObjectURL(f.previewUrl));
   pendingFiles = [];
   form.reset();
   fillCategorySelect();
@@ -742,9 +743,18 @@ form.addEventListener("submit", async (ev) => {
       busy("מעלה לדרייב ושומר…");
       const files = await Promise.all(pendingFiles.map(filePayload));
       const res = await call("saveReceipt")({ receipt, files, ai: aiResult });
-      pendingFiles.forEach((x) => x.previewUrl && URL.revokeObjectURL(x.previewUrl));
+      pendingFiles.forEach((x) => !x.bulk && x.previewUrl && URL.revokeObjectURL(x.previewUrl));
       pendingFiles = [];
-      location.hash = `#/r/${res.data.id}`;
+      const fromBulk = bulkItems.find((b) => b.id === bulkEditId);
+      if (fromBulk) {
+        fromBulk.status = "saved";
+        fromBulk.savedId = res.data.id;
+        fromBulk.title = receipt.items[0]?.name || fromBulk.title;
+        bulkEditId = null;
+        location.hash = "#/bulk";
+      } else {
+        location.hash = `#/r/${res.data.id}`;
+      }
       toast("הקבלה נשמרה");
     }
   } catch (e) {
@@ -1041,6 +1051,216 @@ function showAccessError(e) {
   err.hidden = false;
 }
 
+/* ---------- bulk import ---------- */
+
+let bulkItems = [];
+let bulkEditId = null;
+let bulkRunning = 0;
+let bulkSaving = false;
+const BULK_CONCURRENCY = 2;
+
+const bulkComplete = (ai) => !!(ai && ai.items?.length && ai.purchaseDate);
+const isKnownHash = (hash, except) =>
+  receipts.some((r) => (r.fileHashes || []).includes(hash)) ||
+  bulkItems.some((b) => b !== except && b.file?.hash === hash && b.status !== "removed");
+
+function receiptFromAi(ai) {
+  return {
+    items: (ai.items || []).map((it) => ({
+      name: it.name,
+      price: typeof it.price === "number" ? it.price : null,
+      warrantyMonths: it.warrantyMonths || 0,
+      serialNumber: it.serialNumber || ""
+    })),
+    store: ai.store || "",
+    amount: typeof ai.amount === "number" ? ai.amount : null,
+    currency: ai.currency || "ILS",
+    purchaseDate: new Date(`${ai.purchaseDate}T${ai.purchaseTime || "12:00"}`).getTime(),
+    hasTime: !!ai.purchaseTime,
+    categoryId: ai.categoryId || "other",
+    tags: ai.tags || [],
+    notes: ""
+  };
+}
+
+async function addBulkFiles(fileList) {
+  const fresh = [...fileList].map((file) => ({
+    id: Math.random().toString(36).slice(2, 10),
+    title: file.name,
+    status: "preparing",
+    source: file
+  }));
+  bulkItems.push(...fresh);
+  renderBulk();
+  for (const item of fresh) {
+    try {
+      item.file = await prepareFile(item.source, "receipt");
+      item.file.bulk = true;
+      delete item.source;
+      if (item.file.size > MAX_TOTAL_BYTES) {
+        item.status = "error";
+        item.error = "הקובץ גדול מ-7MB";
+      } else if (isKnownHash(item.file.hash, item)) {
+        item.status = "dup";
+      } else {
+        item.status = "queued";
+      }
+    } catch (e) {
+      item.status = "error";
+      item.error = e.message;
+    }
+    renderBulk();
+    pumpBulk();
+  }
+}
+
+function pumpBulk() {
+  while (bulkRunning < BULK_CONCURRENCY) {
+    const next = bulkItems.find((b) => b.status === "queued");
+    if (!next) break;
+    bulkRunning++;
+    scanBulkItem(next).finally(() => {
+      bulkRunning--;
+      renderBulk();
+      pumpBulk();
+    });
+  }
+}
+
+async function scanBulkItem(item) {
+  item.status = "scanning";
+  renderBulk();
+  try {
+    const res = await call("scanReceipt", 90000)({ files: [await filePayload(item.file)] });
+    item.ai = res.data;
+    item.status = bulkComplete(res.data) ? "ready" : "review";
+  } catch (e) {
+    item.status = "error";
+    item.error = errMsg(e);
+  }
+}
+
+$("bulk-pick").addEventListener("change", async (e) => {
+  const files = [...e.target.files];
+  e.target.value = "";
+  if (files.length) await addBulkFiles(files);
+});
+
+$("bulk-save-all").addEventListener("click", async () => {
+  const ready = bulkItems.filter((b) => b.status === "ready");
+  if (!ready.length || bulkSaving) return;
+  bulkSaving = true;
+  renderBulk();
+  for (const item of ready) {
+    item.status = "saving";
+    renderBulk();
+    try {
+      const res = await call("saveReceipt")({
+        receipt: receiptFromAi(item.ai),
+        files: [await filePayload(item.file)],
+        ai: item.ai
+      });
+      item.status = "saved";
+      item.savedId = res.data.id;
+      item.title = item.ai.items[0]?.name || item.title;
+    } catch (e) {
+      item.status = "error";
+      item.error = "השמירה נכשלה: " + errMsg(e);
+    }
+    renderBulk();
+  }
+  bulkSaving = false;
+  renderBulk();
+  const saved = ready.filter((b) => b.status === "saved").length;
+  if (saved) toast(saved === 1 ? "קבלה אחת נשמרה" : `${saved} קבלות נשמרו`);
+});
+
+const BULK_STATUS = {
+  preparing: ["chip-busy", "מכין…", true],
+  queued: ["chip-busy", "ממתין לסריקה", false],
+  scanning: ["chip-busy", "סורק…", true],
+  ready: ["chip-ready", "מוכנה לשמירה", false],
+  review: ["chip-review", "חסרים פרטים, צריך לבדוק", false],
+  dup: ["chip-dup", "כבר קיימת, לא תישמר", false],
+  error: ["chip-error", "נכשל", false],
+  saving: ["chip-busy", "שומר…", true],
+  saved: ["chip-saved", "נשמרה", false]
+};
+
+function renderBulk() {
+  const items = bulkItems.filter((b) => b.status !== "removed");
+  $("bulk-list").replaceChildren(...items.map((b) => {
+    const [cls, label, spin] = BULK_STATUS[b.status] || BULK_STATUS.error;
+    const ai = b.ai;
+    const names = ai?.items?.map((it) => it.name) || [];
+    const title = b.status === "saved" ? b.title : (names[0] || b.title);
+    const date = ai?.purchaseDate ? fmtDate(new Date(ai.purchaseDate + "T12:00")) : "";
+    const sub = [ai?.store, date, typeof ai?.amount === "number" ? fmtAmount(ai.amount, ai.currency || "ILS") : ""].filter(Boolean).join(" · ");
+    const editable = ["ready", "review", "dup", "error"].includes(b.status) && b.file && !bulkSaving;
+    const removable = !["scanning", "saving", "saved", "preparing"].includes(b.status) && !bulkSaving;
+    return el("li", { class: "bulk-item" + (b.status === "saved" ? " saved" : "") },
+      thumb(b.file?.mimeType || "", b.file?.previewUrl),
+      el("div", { class: "bulk-main" },
+        el("div", { class: "bulk-title" }, title, names.length > 1 && el("span", { class: "more-items", text: ` +${names.length - 1}` })),
+        sub && el("div", { class: "bulk-sub", text: sub }),
+        el("span", { class: "chip " + cls }, spin && el("span", { class: "spinner small" }), label),
+        b.error && el("div", { class: "error small", text: b.error }),
+        el("div", { class: "bulk-actions" },
+          editable && el("a", { class: "link-btn", href: `#/bulk/edit/${b.id}`, text: b.status === "dup" ? "שמירה בכל זאת" : "בדיקה ועריכה" }),
+          b.status === "saved" && b.savedId && el("a", { class: "link-btn", href: `#/r/${b.savedId}`, text: "פתיחה" }),
+          removable && el("button", {
+            type: "button", class: "link-btn danger", text: "הסרה",
+            onclick: () => {
+              if (b.file?.previewUrl) URL.revokeObjectURL(b.file.previewUrl);
+              b.status = "removed";
+              renderBulk();
+            }
+          })
+        )
+      )
+    );
+  }));
+
+  const count = (st) => items.filter((b) => b.status === st).length;
+  const ready = count("ready");
+  const pending = items.filter((b) => ["preparing", "queued", "scanning"].includes(b.status)).length;
+  $("bulk-summary").hidden = !items.length;
+  $("bulk-progress").textContent = [
+    pending ? `סורק ${items.length - pending} מתוך ${items.length}` : `${items.length} קבצים`,
+    ready ? `${ready} מוכנות` : "",
+    count("saved") ? `${count("saved")} נשמרו` : ""
+  ].filter(Boolean).join(" · ");
+  const btn = $("bulk-save-all");
+  btn.disabled = !ready || bulkSaving;
+  btn.textContent = bulkSaving ? "שומר…" : ready === 1 ? "שמירת קבלה אחת" : ready ? `שמירת ${ready} קבלות` : "שמירת הכל";
+}
+
+function openBulkEdit(id) {
+  const item = bulkItems.find((b) => b.id === id && b.status !== "removed");
+  if (!item || !item.file) { location.hash = "#/bulk"; return; }
+  openEdit(null);
+  bulkEditId = id;
+  $("edit-title").textContent = "בדיקת קבלה";
+  $("edit-close").href = "#/bulk";
+  $("btn-cancel").href = "#/bulk";
+  pendingFiles = [item.file];
+  renderPendingFiles();
+  if (item.ai) {
+    aiResult = item.ai;
+    applyScan(item.ai, true);
+    scanStatus("done", "הפרטים מולאו מהסריקה. בדקו אותם לפני השמירה.");
+  } else {
+    runScan(false);
+  }
+}
+
+window.addEventListener("beforeunload", (e) => {
+  if (bulkItems.some((b) => ["preparing", "queued", "scanning", "ready", "review", "saving"].includes(b.status))) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
 /* ---------- routing ---------- */
 
 function route() {
@@ -1054,6 +1274,16 @@ function route() {
       history.replaceState(null, "", "#/settings");
     }
     show("settings");
+    return;
+  }
+  if (hash === "#/bulk") {
+    renderBulk();
+    show("bulk");
+    return;
+  }
+  const bm = /^#\/bulk\/edit\/([^/]+)$/.exec(hash);
+  if (bm) {
+    if (currentView() !== "edit" || bulkEditId !== bm[1]) openBulkEdit(bm[1]);
     return;
   }
   if (hash === "#/new") {
