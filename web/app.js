@@ -136,9 +136,12 @@ function itemsOf(r) {
   }];
 }
 
-// המוצר "הראשי" של קבלה: זה עם המחיר הגבוה ביותר. בלי מחירים, או בשוויון, נשאר הסדר שבקבלה.
+// המוצר "הראשי" של קבלה: זה שסומן בכוכב, ואם לא סומן, זה עם המחיר הגבוה ביותר.
+// בלי מחירים, או בשוויון, נשאר הסדר שבקבלה.
 function mainItem(items) {
   if (!items?.length) return null;
+  const starred = items.find((it) => it.main === true);
+  if (starred) return starred;
   return items.reduce((best, it) => (priceValue(it.price) > priceValue(best.price) ? it : best), items[0]);
 }
 
@@ -516,7 +519,8 @@ function openEdit(id) {
       printedName: it.printedName || "",
       price: typeof it.price === "number" ? it.price : null,
       warrantyMonths: it.warrantyMonths || null,
-      serialNumber: it.serialNumber || ""
+      serialNumber: it.serialNumber || "",
+      main: it.main === true
     }));
   } else {
     f.date.value = isoDate(new Date());
@@ -588,10 +592,19 @@ function renderItems() {
       e.target.closest(".field")?.classList.remove("invalid");
       $("items-block").classList.remove("uncertain");
       if (key === "warrantyMonths") endEl.textContent = itemEndText(it.warrantyMonths);
+      if (key === "price" || key === "name") updateStars();
     };
     const int = (v) => (parseInt(v, 10) > 0 ? parseInt(v, 10) : null);
     return el("div", { class: "item-card" },
       el("div", { class: "item-top" },
+        formItems.length > 1 && el("button", {
+          type: "button", class: "icon-btn item-star", "aria-label": `סימון מוצר ${i + 1} כראשי`,
+          onclick: () => {
+            formItems.forEach((x) => { x.main = x === it; });
+            userEdited.add("items");
+            updateStars();
+          }
+        }, el("span", { "aria-hidden": "true" })),
         el("label", { class: "field grow" }, formItems.length > 1 ? `מוצר ${i + 1}` : "מוצר",
           el("input", { value: it.name, maxlength: "120", placeholder: "למשל: מקרר LG 600 ליטר", oninput: onInput("name") })),
         formItems.length > 1 && el("button", {
@@ -612,6 +625,21 @@ function renderItems() {
     );
   }));
   $("items-count").textContent = formItems.length > 1 ? `${formItems.length} מוצרים` : "";
+  updateStars();
+}
+
+// הכוכב מסמן את המוצר שייתן לקבלה את שמה: הנבחר, ואם לא נבחר, היקר ביותר
+function updateStars() {
+  const main = mainItem(formItems.filter((it) => it.name.trim()).length ? formItems.filter((it) => it.name.trim()) : formItems);
+  $("items-list").querySelectorAll(".item-card").forEach((card, i) => {
+    const btn = card.querySelector(".item-star");
+    if (!btn) return;
+    const on = formItems[i] === main;
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.firstChild.textContent = on ? "★" : "☆";
+    btn.title = on ? "המוצר הראשי" : "סימון כמוצר הראשי";
+  });
 }
 
 $("btn-add-item").addEventListener("click", () => {
@@ -834,7 +862,8 @@ form.addEventListener("submit", async (ev) => {
         price: typeof it.price === "number" && Number.isFinite(it.price) ? it.price : null,
         warrantyMonths: it.warrantyMonths || 0,
         warrantyEnd: it.warrantyMonths ? Timestamp.fromMillis(addMonths(purchaseMs, it.warrantyMonths)) : null,
-        serialNumber: it.serialNumber
+        serialNumber: it.serialNumber,
+        main: it.main === true
       }));
       const ends = items.filter((it) => it.warrantyMonths).map((it) => addMonths(purchaseMs, it.warrantyMonths));
       await updateDoc(doc(db, "receipts", editingId), {

@@ -129,9 +129,13 @@ function cleanReceipt(r) {
       price: numOrNull(it?.price),
       warrantyMonths,
       warrantyEnd: warrantyMonths ? Timestamp.fromMillis(addMonths(purchaseDate, warrantyMonths)) : null,
-      serialNumber: String(it?.serialNumber || "").trim().slice(0, 80)
+      serialNumber: String(it?.serialNumber || "").trim().slice(0, 80),
+      main: it?.main === true
     };
   }).filter((it) => it.name);
+  // לכל היותר מוצר אחד מסומן כראשי
+  const starred = items.find((it) => it.main);
+  items.forEach((it) => { it.main = it === starred; });
   if (!items.length) throw new HttpsError("invalid-argument", "חסר שם מוצר");
 
   const ends = items.map((it) => it.warrantyEnd?.toMillis()).filter(Boolean);
@@ -139,8 +143,8 @@ function cleanReceipt(r) {
     ? [...new Set(r.tags.map((t) => String(t).trim().slice(0, 30)).filter(Boolean))].slice(0, 10)
     : [];
   return {
-    // השם הראשי: המוצר היקר ביותר (משמש לשם הקובץ בדרייב, לתיקוני סיווג ולתצוגה)
-    productName: items.reduce((best, it) => ((it.price ?? -1) > (best.price ?? -1) ? it : best), items[0]).name,
+    // השם הראשי: המוצר שסומן בכוכב, אחרת היקר ביותר (משמש לשם הקובץ בדרייב, לתיקוני סיווג ולתצוגה)
+    productName: (starred || items.reduce((best, it) => ((it.price ?? -1) > (best.price ?? -1) ? it : best), items[0])).name,
     itemNames: items.flatMap((it) => [it.name, it.printedName].filter(Boolean)),
     items,
     store: String(r.store || "").trim().slice(0, 80),
