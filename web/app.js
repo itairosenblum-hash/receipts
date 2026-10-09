@@ -442,7 +442,7 @@ function openEdit(id) {
   if (r) {
     const d = toDate(r.purchaseDate) || new Date();
     f.store.value = r.store || "";
-    f.amount.value = typeof r.amount === "number" ? r.amount : "";
+    f.amount.value = formatMoney(r.amount);
     f.categoryId.value = r.categoryId || "";
     f.date.value = isoDate(d);
     f.time.value = r.hasTime ? fmtTime(d) : "";
@@ -464,6 +464,49 @@ function openEdit(id) {
   show("edit");
 }
 
+/* ---------- money inputs: 12,345.50 with ₪ ---------- */
+
+function formatMoney(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const n = typeof value === "number" ? value : parseMoney(value);
+  if (n === null) return "";
+  return n.toLocaleString("en-US", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+}
+
+function parseMoney(text) {
+  const clean = String(text ?? "").replace(/[^\d.]/g, "");
+  if (!clean) return null;
+  const n = Number(clean);
+  return Number.isFinite(n) ? n : null;
+}
+
+// מעצב תוך כדי הקלדה: פסיקים באלפים, נקודה אחת ועד שתי ספרות אחריה, והסמן נשאר אחרי אותה ספרה
+function onMoneyInput(e) {
+  const input = e.target;
+  const raw = input.value;
+  const caret = input.selectionStart ?? raw.length;
+  const digitsBefore = raw.slice(0, caret).replace(/[^\d.]/g, "").length;
+  let clean = raw.replace(/[^\d.]/g, "");
+  const dot = clean.indexOf(".");
+  if (dot !== -1) clean = clean.slice(0, dot + 1) + clean.slice(dot + 1).replace(/\./g, "").slice(0, 2);
+  const [intPart, decPart] = clean.split(".");
+  const intFmt = (intPart || (decPart !== undefined ? "0" : "")).replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const formatted = decPart !== undefined ? `${intFmt}.${decPart}` : intFmt;
+  input.value = formatted;
+  let pos = 0, seen = 0;
+  while (pos < formatted.length && seen < digitsBefore) {
+    if (/[\d.]/.test(formatted[pos])) seen++;
+    pos++;
+  }
+  try { input.setSelectionRange(pos, pos); } catch {}
+}
+
+function moneyField(value, onChange) {
+  const input = el("input", { type: "text", inputmode: "decimal", autocomplete: "off", class: "money-input", value: formatMoney(value) });
+  input.addEventListener("input", (e) => { onMoneyInput(e); onChange(parseMoney(input.value), e); });
+  return el("span", { class: "money" }, input, el("span", { class: "money-sign", "aria-hidden": "true", text: "₪" }));
+}
+
 /* ---------- products editor ---------- */
 
 function itemEndText(months) {
@@ -483,7 +526,6 @@ function renderItems() {
       $("items-block").classList.remove("uncertain");
       if (key === "warrantyMonths") endEl.textContent = itemEndText(it.warrantyMonths);
     };
-    const num = (v) => (v === "" ? null : Number(v));
     const int = (v) => (parseInt(v, 10) > 0 ? parseInt(v, 10) : null);
     return el("div", { class: "item-card" },
       el("div", { class: "item-top" },
@@ -496,8 +538,8 @@ function renderItems() {
       ),
       it.printedName && it.printedName !== it.name && el("div", { class: "muted small printed", text: `בקבלה: ${it.printedName}` }),
       el("div", { class: "grid-2" },
-        el("label", { class: "field" }, "מחיר (₪)",
-          el("input", { type: "number", inputmode: "decimal", min: "0", step: "0.01", value: it.price ?? "", oninput: onInput("price", num) })),
+        el("label", { class: "field" }, "מחיר",
+          moneyField(it.price, (v, e) => onInput("price", () => v)(e))),
         el("label", { class: "field" }, "אחריות (חודשים)",
           el("input", { type: "number", inputmode: "numeric", min: "0", max: "240", value: it.warrantyMonths ?? "", placeholder: "לא ידוע", oninput: onInput("warrantyMonths", int) }))
       ),
@@ -515,6 +557,8 @@ $("btn-add-item").addEventListener("click", () => {
   renderItems();
   $("items-list").lastElementChild?.querySelector("input")?.focus();
 });
+
+form.elements.amount.addEventListener("input", onMoneyInput);
 
 form.elements.date.addEventListener("input", () => {
   $("items-list").querySelectorAll(".item-end").forEach((n, i) => { n.textContent = itemEndText(formItems[i]?.warrantyMonths); });
@@ -600,7 +644,7 @@ function applyScan(d, force) {
     f[name].value = value;
   };
   set("store", d.store);
-  set("amount", d.amount);
+  set("amount", formatMoney(d.amount));
   set("date", d.purchaseDate);
   set("time", d.purchaseTime);
   if (d.categoryId && categories.some((c) => c.id === d.categoryId)) set("categoryId", d.categoryId);
@@ -708,7 +752,7 @@ form.addEventListener("submit", async (ev) => {
   const receipt = {
     items,
     store: f.store.value.trim(),
-    amount: f.amount.value === "" ? null : Number(f.amount.value),
+    amount: parseMoney(f.amount.value),
     currency: "ILS",
     purchaseDate: purchaseMs,
     hasTime,
