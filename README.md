@@ -6,65 +6,89 @@ Firebase (Auth, Firestore, Functions), סריקה עם Gemini, ושמירת קב
 ## מבנה
 
 ```
-web/               האתר (HTML, CSS, JS ללא build), נפרס ל-GitHub Pages
-functions/         Cloud Functions: חיבור דרייב, שמירת קבלות וקבצים
-firestore.rules    Security Rules ל-Firestore
-storage.rules      חסימה מלאה של Storage (לא בשימוש)
-firebase.json      הגדרות Firebase CLI
+web/                         האתר (HTML, CSS, JS ללא build), נפרס ל-GitHub Pages
+functions/                   Cloud Functions: דרייב, סריקה, שמירת קבלות וקבצים
+firestore.rules              Security Rules ל-Firestore
+.github/workflows/pages.yml      פריסת האתר בכל שינוי ב-web/
+.github/workflows/functions.yml  פריסת ה-Functions וה-Rules בכל שינוי בהם
 ```
 
 ## מצב הפיתוח
 
 - [x] שלב 1: כניסה עם Google, רשימת מורשים, Security Rules, פריסה
-- [x] שלב 2: חיבור דרייב, העלאה ושמירה ידנית, פרטי קבלה
-- [ ] שלב 3: סריקה וסיווג עם Gemini
+- [x] שלב 2: חיבור דרייב, העלאה ושמירה, פרטי קבלה, עריכה
+- [x] שלב 3: סריקה וסיווג אוטומטיים עם Gemini, למידה מתיקונים
 - [ ] שלב 4: PWA מלא והתראות אחריות
 - [ ] שלב 5: ליטוש
 
-## הגדרה ראשונית (שלב 1)
+## הגדרה חד-פעמית (אפשר מהטלפון)
 
-1. **GitHub Pages:** ב-Settings ← Pages ← Source לבחור **GitHub Actions**. כל push ל-`main` שמשנה את `web/` נפרס אוטומטית.
-2. **Authentication:** ב-Firebase Console להפעיל את ספק Google, ותחת Settings ← Authorized domains להוסיף את `itairosenblum-hash.github.io`.
-3. **Firestore Rules:** `firebase deploy --only firestore:rules` (או העתקה ידנית ל-Console).
-4. **רשימת מורשים:** להיכנס לאפליקציה עם חשבון המנהל, לעבור להגדרות וללחוץ "יצירת רשימת מורשים", ואז להוסיף את שאר החשבונות.
+כל קישורי Google Cloud פותחים את הפרויקט `shopping-fa855`. בטלפון כדאי להפעיל בדפדפן "גרסת מחשב".
 
-## הגדרת הדרייב וה-Functions (שלב 2)
+### 1. Google Drive API
+[Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com?project=shopping-fa855) ← **Enable**.
 
-כל השלבים ב-[Google Cloud Console](https://console.cloud.google.com/?project=shopping-fa855), בפרויקט `shopping-fa855`.
+### 2. מסך הסכמה
+[Google Auth Platform](https://console.cloud.google.com/auth/overview?project=shopping-fa855) ← Get started:
+- שם אפליקציה: "קבלות ואחריות", מייל תמיכה: המייל שלך.
+- Audience: **External**. מייל ליצירת קשר: המייל שלך.
+- אחרי היצירה: **Audience ← Publish app** (מעבר ל-In production). במצב Testing ההרשאה לדרייב פגה כל 7 ימים.
 
-1. **Drive API:** APIs & Services ← Library ← Google Drive API ← **Enable**.
-2. **מסך הסכמה (OAuth consent screen / Google Auth Platform):**
-   - User type: **External**. שם אפליקציה: "קבלות ואחריות", ומייל התמיכה והמפתח: המייל של המנהל.
-   - בתפריט Audience ללחוץ **Publish app** (מעבר ל-In production). במצב Testing ההרשאה לדרייב פגה כל 7 ימים.
-3. **OAuth Client:** Clients (או Credentials) ← Create client ← **Web application**.
-   - Authorized redirect URIs: `https://europe-west1-shopping-fa855.cloudfunctions.net/driveCallback`
-   - לשמור את ה-Client ID וה-Client secret.
-4. **מהלפטופ**, בתיקיית הריפו:
-   ```
-   npm install -g firebase-tools
-   firebase login
-   cd functions && npm install && cd ..
-   firebase functions:secrets:set GOOGLE_OAUTH_CLIENT_ID
-   firebase functions:secrets:set GOOGLE_OAUTH_CLIENT_SECRET
-   firebase deploy --only functions,firestore:rules
-   ```
-5. **חיבור:** באפליקציה ← הגדרות ← **חיבור Google Drive**, להתחבר עם חשבון המנהל ולאשר את כל ההרשאות.
-   Google יציג אזהרה שהאפליקציה לא מאומתת: ללחוץ Advanced ← Go to (unsafe). זה צפוי באפליקציה פרטית.
+### 3. OAuth Client
+[Clients](https://console.cloud.google.com/auth/clients?project=shopping-fa855) ← Create client:
+- Application type: **Web application**
+- Authorized redirect URIs: `https://europe-west1-shopping-fa855.cloudfunctions.net/driveCallback`
+- לשמור את ה-**Client ID** וה-**Client secret**.
 
-### תיקיית היעד
+### 4. מפתח Gemini
+[Google AI Studio](https://aistudio.google.com/apikey) ← Create API key ← לבחור את הפרויקט **shopping-fa855**.
+כך המפתח משויך לפרויקט עם החיוב, והנתונים לא משמשים לאימון מודלים.
 
-התיקייה מוגדרת ב-`functions/.env` (`DRIVE_FOLDER_ID`). הקבצים נשמרים בתת-תיקייה לפי שנה.
-גישה לתיקייה קיימת דורשת הרשאת Drive מלאה. השארת `DRIVE_FOLDER_ID` ריק עוברת להרשאה המצומצמת `drive.file`,
-והאפליקציה יוצרת תיקייה בשם "קבלות ואחריות" בשורש הדרייב.
-אחרי שינוי התיקייה: לפרוס מחדש את ה-Functions ולחבר מחדש את הדרייב.
+### 5. חשבון שירות לפריסה
+[Service accounts](https://console.cloud.google.com/iam-admin/serviceaccounts?project=shopping-fa855) ← Create service account:
+- שם: `github-deploy`.
+- תפקידים (Roles): **Editor**, **Cloud Functions Admin**, **Cloud Run Admin**, **Secret Manager Admin**, **Service Account User**.
+- אחרי היצירה: לפתוח את החשבון ← Keys ← Add key ← Create new key ← **JSON**. קובץ יורד.
 
-### איך זה עובד
+### 6. Secrets בריפו
+בריפו: Settings ← Secrets and variables ← Actions ← **New repository secret**, ארבעה:
 
-- ה-refresh token של הדרייב נשמר ב-`secrets/drive` ב-Firestore, אוסף שה-Rules חוסמים לחלוטין ללקוחות.
-  רק ה-Functions (עם Admin SDK) קוראים אותו.
-- העלאה, צפייה ומחיקה של קבצים עוברות דרך ה-Functions, כך שגם משתמשים שאינם המנהל
-  רואים את הקבצים בלי שהתיקייה תהיה משותפת איתם.
-- תמונות מוקטנות ל-2000 פיקסלים ונדחסות ל-JPEG בדפדפן. מגבלה: 7MB לקבלה.
+| שם | ערך |
+| --- | --- |
+| `FIREBASE_SERVICE_ACCOUNT` | כל התוכן של קובץ ה-JSON משלב 5 |
+| `GOOGLE_OAUTH_CLIENT_ID` | Client ID משלב 3 |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Client secret משלב 3 |
+| `GEMINI_API_KEY` | המפתח משלב 4 |
+
+### 7. פריסה
+Actions ← **Deploy Firebase (functions + rules)** ← Run workflow. הריצה הראשונה לוקחת כמה דקות.
+מכאן והלאה, כל שינוי בקוד השרת נפרס אוטומטית.
+
+### 8. חיבור הדרייב
+באפליקציה ← הגדרות ← **חיבור Google Drive**, להתחבר עם חשבון המנהל ולאשר את כל ההרשאות.
+Google יציג אזהרה שהאפליקציה לא מאומתת: Advanced ← Go to... זה צפוי באפליקציה פרטית.
+
+## איך זה עובד
+
+- **סריקה:** אחרי בחירת קובץ, `scanReceipt` שולח אותו ל-Gemini עם רשימת הקטגוריות, 10 התיקונים האחרונים
+  והתגיות הקיימות, ומקבל JSON מובנה. שדות עם ביטחון נמוך מסומנים בכתום. שדה שהמשתמש ערך לא נדרס.
+- **למידה:** אם הקטגוריה שנשמרה שונה מזו שה-AI הציע, נשמר תיקון ב-`corrections` ומצורף לסריקות הבאות.
+- **דרייב:** הקבצים נשמרים בתיקייה שמוגדרת ב-`functions/.env` (`DRIVE_FOLDER_ID`), בתת-תיקייה לפי שנה.
+  גישה לתיקייה קיימת דורשת הרשאת Drive מלאה. השארת `DRIVE_FOLDER_ID` ריק עוברת להרשאה המצומצמת `drive.file`,
+  והאפליקציה יוצרת תיקייה משלה. אחרי שינוי: לפרוס מחדש ולחבר מחדש את הדרייב.
+- **אבטחה:** ה-refresh token של הדרייב נשמר ב-`secrets/drive` ב-Firestore, אוסף שה-Rules חוסמים ללקוחות.
+  העלאה, צפייה ומחיקה של קבצים עוברות דרך ה-Functions, כך שהתיקייה לא צריכה להיות משותפת.
+- **גודל:** תמונות מוקטנות ל-2000 פיקסלים ונדחסות ל-JPEG בדפדפן. מגבלה: 7MB לקבלה.
+- **מודל:** `GEMINI_MODEL` ב-`functions/.env`.
+
+## פריסה ידנית מהמחשב (לא חובה)
+
+```
+npm install -g firebase-tools
+firebase login
+npm ci --prefix functions
+firebase deploy --only functions,firestore:rules
+```
 
 ## פיתוח מקומי
 
@@ -72,5 +96,3 @@ firebase.json      הגדרות Firebase CLI
 cd web
 npx serve .
 ```
-
-ולהוסיף את `localhost` ל-Authorized domains (בדרך כלל כבר מופיע שם).

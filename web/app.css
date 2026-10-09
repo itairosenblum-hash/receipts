@@ -194,6 +194,17 @@ a.btn-secondary, a.btn-primary { display: inline-flex; align-items: center; just
 }
 .warn-text { color: var(--warn-ink); font-size: 14px; margin: 0; }
 
+/* Scanning */
+.scan-status {
+  display: flex; align-items: center; gap: 10px; border-radius: 12px; padding: 10px 12px;
+  background: var(--accent-tint); color: var(--accent-ink); font-size: 14px; font-weight: 600;
+}
+.scan-status.error { background: var(--warn-tint); color: var(--warn-ink); }
+.spinner.small { width: 18px; height: 18px; border-width: 2px; flex: none; }
+.field.uncertain { color: var(--warn-ink); }
+.field.uncertain input, .field.uncertain select { border: 2px solid #D97706; background: #FFFBF3; }
+.field.uncertain::after { content: "לא זוהה בוודאות, כדאי לבדוק מול הקבלה"; font-weight: 400; font-size: 12px; }
+
 /* File picking */
 .file-pick { display: flex; gap: 10px; }
 .pick-btn { flex: 1; white-space: nowrap; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; position: relative; }

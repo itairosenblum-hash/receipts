@@ -5,6 +5,7 @@ import { setGlobalOptions, logger } from "firebase-functions/v2";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { OAuth2Client } from "google-auth-library";
 import { drive as driveApi } from "@googleapis/drive";
+import { GoogleGenAI, Type } from "@google/genai";
 import { Readable } from "node:stream";
 import crypto from "node:crypto";
 
@@ -18,6 +19,8 @@ const CLIENT_ID = defineSecret("GOOGLE_OAUTH_CLIENT_ID");
 const CLIENT_SECRET = defineSecret("GOOGLE_OAUTH_CLIENT_SECRET");
 const DRIVE_FOLDER_ID = defineString("DRIVE_FOLDER_ID", { default: "" });
 const APP_URL = defineString("APP_URL", { default: "https://itairosenblum-hash.github.io/Shopping/" });
+const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+const GEMINI_MODEL = defineString("GEMINI_MODEL", { default: "gemini-3.8-flash" });
 
 const ADMIN_EMAIL = "itai.rosenblum@gmail.com";
 const APP_FOLDER_NAME = "קבלות ואחריות";
@@ -294,6 +297,142 @@ export const driveCallback = onRequest({ secrets: SECRETS }, async (req, res) =>
   }
 });
 
+/* ---------- Gemini scanning ---------- */
+
+const SCAN_INSTRUCTIONS = `You extract structured data from purchase receipts and tax invoices, usually Israeli and in Hebrew (קבלה, חשבונית מס, חשבונית מס/קבלה).
+Rules:
+- store: the business name as printed (Hebrew if printed in Hebrew). Drop legal suffixes like בע"מ unless they are part of the brand.
+- productName: the main durable product bought, short and specific, in Hebrew with brand and model as printed (for example "מקרר LG 600 ליטר"). With several items, pick the most expensive durable item. Ignore delivery, installation, bags and extended-warranty lines.
+- amount: the total actually paid including VAT (סה"כ לתשלום), as a number.
+- currency: ISO code. ₪ / ש"ח / NIS = ILS.
+- purchaseDate: YYYY-MM-DD. Israeli receipts print dates as DD/MM/YY or DD/MM/YYYY (day first).
+- purchaseTime: HH:MM in 24h, or null.
+- categoryId: exactly one of the category ids given. Follow the user's past corrections when a similar product appears.
+- tags: up to 3 short Hebrew tags useful for search (room, use, occasion). Prefer existing tags when they fit.
+- warrantyMonths: if the receipt states a warranty period (אחריות X שנים / חודשים, including a purchased extended warranty), use it and set warrantyFromReceipt=true. Otherwise use the category's typical warranty and set warrantyFromReceipt=false.
+- serialNumber: only if printed (מס' סידורי, S/N, IMEI), else null.
+- Use null for anything not on the document. Never invent dates or amounts.
+- confidence: 0 to 1 per field, honest. Use below 0.7 when the text is blurry, cut off or ambiguous.`;
+
+const SCAN_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    store: { type: Type.STRING, nullable: true },
+    productName: { type: Type.STRING, nullable: true },
+    amount: { type: Type.NUMBER, nullable: true },
+    currency: { type: Type.STRING, nullable: true },
+    purchaseDate: { type: Type.STRING, nullable: true, description: "YYYY-MM-DD" },
+    purchaseTime: { type: Type.STRING, nullable: true, description: "HH:MM" },
+    categoryId: { type: Type.STRING },
+    tags: { type: Type.ARRAY, items: { type: Type.STRING } },
+    warrantyMonths: { type: Type.INTEGER, nullable: true },
+    warrantyFromReceipt: { type: Type.BOOLEAN },
+    serialNumber: { type: Type.STRING, nullable: true },
+    confidence: {
+      type: Type.OBJECT,
+      properties: {
+        store: { type: Type.NUMBER },
+        productName: { type: Type.NUMBER },
+        amount: { type: Type.NUMBER },
+        purchaseDate: { type: Type.NUMBER },
+        purchaseTime: { type: Type.NUMBER },
+        categoryId: { type: Type.NUMBER },
+        warrantyMonths: { type: Type.NUMBER }
+      }
+    }
+  },
+  required: ["store", "productName", "amount", "purchaseDate", "categoryId", "tags", "warrantyMonths", "warrantyFromReceipt", "confidence"],
+  propertyOrdering: ["store", "productName", "amount", "currency", "purchaseDate", "purchaseTime", "categoryId", "tags", "warrantyMonths", "warrantyFromReceipt", "serialNumber", "confidence"]
+};
+
+function cleanAi(ai) {
+  if (!ai || typeof ai !== "object") return null;
+  const str = (v, max = 120) => (v == null ? null : String(v).slice(0, max));
+  return {
+    model: str(ai.model, 60),
+    store: str(ai.store),
+    productName: str(ai.productName),
+    amount: Number.isFinite(Number(ai.amount)) && ai.amount !== null ? Number(ai.amount) : null,
+    purchaseDate: str(ai.purchaseDate, 10),
+    purchaseTime: str(ai.purchaseTime, 5),
+    categoryId: str(ai.categoryId, 40),
+    warrantyMonths: Number.isFinite(Number(ai.warrantyMonths)) && ai.warrantyMonths !== null ? Number(ai.warrantyMonths) : null
+  };
+}
+
+export const scanReceipt = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 120, memory: "512MiB" }, async (request) => {
+  await requireAllowed(request);
+  const files = decodeFiles(request.data?.files || []).slice(0, 3);
+  if (!files.length) throw new HttpsError("invalid-argument", "אין קובץ לסריקה");
+
+  const [catSnap, corrSnap, recSnap] = await Promise.all([
+    db.collection("categories").orderBy("order").get(),
+    db.collection("corrections").orderBy("createdAt", "desc").limit(10).get(),
+    db.collection("receipts").orderBy("createdAt", "desc").limit(200).select("tags").get()
+  ]);
+  const categories = catSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  if (!categories.length) categories.push({ id: "other", name: "אחר", warrantyMonths: 0 });
+  const ids = categories.map((c) => c.id);
+  const corrections = corrSnap.docs.map((d) => d.data());
+  const existingTags = [...new Set(recSnap.docs.flatMap((d) => d.data().tags || []))].slice(0, 60);
+
+  const context = [
+    "Categories (id: name, typical warranty months):",
+    ...categories.map((c) => `- ${c.id}: ${c.name}, ${c.warrantyMonths || 0}`),
+    corrections.length ? "\nPast corrections by the user (product → correct category):" : "",
+    ...corrections.map((c) => `- "${c.productName}" from "${c.store}": not ${c.suggested}, correct is ${c.chosen}`),
+    existingTags.length ? `\nExisting tags: ${existingTags.join(", ")}` : "",
+    `\nToday is ${localDateParts(Date.now()).date}.`
+  ].filter(Boolean).join("\n");
+
+  const schema = structuredClone(SCAN_SCHEMA);
+  schema.properties.categoryId.enum = ids;
+
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY.value() });
+  let result;
+  try {
+    const res = await ai.models.generateContent({
+      model: GEMINI_MODEL.value(),
+      contents: [{
+        role: "user",
+        parts: [
+          ...files.map((f) => ({ inlineData: { mimeType: f.mimeType, data: f.buffer.toString("base64") } })),
+          { text: context }
+        ]
+      }],
+      config: {
+        systemInstruction: SCAN_INSTRUCTIONS,
+        responseMimeType: "application/json",
+        responseSchema: schema,
+        temperature: 0
+      }
+    });
+    result = JSON.parse(res.text);
+  } catch (e) {
+    logger.error("gemini scan failed", e);
+    throw new HttpsError("internal", "הסריקה נכשלה. אפשר למלא את הפרטים ידנית.");
+  }
+
+  // ניקוי ובדיקות סבירות
+  const valid = (re, v) => (typeof v === "string" && re.test(v) ? v : null);
+  const date = valid(/^\d{4}-\d{2}-\d{2}$/, result.purchaseDate);
+  return {
+    model: GEMINI_MODEL.value(),
+    store: result.store || null,
+    productName: result.productName || null,
+    amount: typeof result.amount === "number" && result.amount >= 0 ? result.amount : null,
+    currency: valid(/^[A-Z]{3}$/, result.currency) || "ILS",
+    purchaseDate: date && !isNaN(Date.parse(date)) ? date : null,
+    purchaseTime: valid(/^([01]\d|2[0-3]):[0-5]\d$/, result.purchaseTime),
+    categoryId: ids.includes(result.categoryId) ? result.categoryId : "other",
+    tags: Array.isArray(result.tags) ? result.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 3) : [],
+    warrantyMonths: Number.isInteger(result.warrantyMonths) && result.warrantyMonths >= 0 && result.warrantyMonths <= 240 ? result.warrantyMonths : null,
+    warrantyFromReceipt: !!result.warrantyFromReceipt,
+    serialNumber: result.serialNumber || null,
+    confidence: result.confidence || {}
+  };
+});
+
 /* ---------- receipts ---------- */
 
 export const saveReceipt = onCall({ secrets: SECRETS, timeoutSeconds: 120, memory: "512MiB" }, async (request) => {
@@ -313,15 +452,28 @@ export const saveReceipt = onCall({ secrets: SECRETS, timeoutSeconds: 120, memor
         index
       }));
     }
+    const ai = cleanAi(request.data?.ai);
+    const corrected = !!ai?.categoryId && ai.categoryId !== receipt.categoryId;
     const ref = db.collection("receipts").doc();
     await ref.set({
       ...receipt,
       files: uploaded.map(({ hash, ...f }) => f),
       fileHashes: uploaded.map((f) => f.hash),
+      aiRaw: ai,
+      corrected,
       createdBy: user.email,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp()
     });
+    if (corrected) {
+      await db.collection("corrections").add({
+        store: receipt.store,
+        productName: receipt.productName,
+        suggested: ai.categoryId,
+        chosen: receipt.categoryId,
+        createdAt: FieldValue.serverTimestamp()
+      }).catch((e) => logger.warn("correction not saved", e.message));
+    }
     return { id: ref.id };
   } catch (e) {
     await trashQuietly(drive, uploaded.map((f) => f.driveFileId));

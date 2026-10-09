@@ -368,7 +368,15 @@ $("search").addEventListener("input", renderReceipts);
 let editingId = null;
 let pendingFiles = [];
 let warrantyTouched = false;
+let aiResult = null;
+let scanning = false;
+let scanSeq = 0;
+const userEdited = new Set();
 const form = $("receipt-form");
+const CONFIDENCE_FIELDS = {
+  store: "store", productName: "productName", amount: "amount", purchaseDate: "date",
+  purchaseTime: "time", categoryId: "categoryId", warrantyMonths: "warrantyMonths"
+};
 
 function fillCategorySelect() {
   const sel = $("category-select");
@@ -396,7 +404,8 @@ function openEdit(id) {
   fillCategorySelect();
   $("form-error").hidden = true;
   $("dup-warning").hidden = true;
-  form.querySelectorAll(".invalid").forEach((n) => n.classList.remove("invalid"));
+  form.querySelectorAll(".invalid, .uncertain").forEach((n) => n.classList.remove("invalid", "uncertain"));
+  resetScan();
 
   $("edit-title").textContent = r ? "עריכת קבלה" : "קבלה חדשה";
   $("files-section").hidden = !!r;
@@ -453,7 +462,106 @@ async function addPendingFiles(fileList) {
     }
   }
   renderPendingFiles();
+  if (!editingId && !aiResult && !scanning && pendingFiles.length) runScan(false);
 }
+
+/* ---------- Gemini scan ---------- */
+
+function resetScan() {
+  scanSeq++;
+  aiResult = null;
+  scanning = false;
+  userEdited.clear();
+  $("scan-status").hidden = true;
+  setSaveState();
+}
+
+function setSaveState() {
+  const btn = $("btn-save");
+  btn.disabled = scanning;
+  btn.textContent = scanning ? "ממתין לסריקה…" : "שמירה";
+}
+
+function scanStatus(state, text) {
+  const box = $("scan-status");
+  box.hidden = false;
+  box.classList.toggle("error", state === "error");
+  $("scan-spinner").hidden = state !== "busy";
+  $("scan-icon").hidden = state === "busy";
+  $("scan-text").textContent = text;
+  $("btn-rescan").hidden = state === "busy";
+}
+
+async function runScan(force) {
+  const toScan = pendingFiles.filter((f) => f.kind === "receipt");
+  const files = (toScan.length ? toScan : pendingFiles.slice(0, 1)).slice(0, 3);
+  if (!files.length) return;
+
+  const seq = ++scanSeq;
+  scanning = true;
+  setSaveState();
+  scanStatus("busy", "Gemini קורא את הקבלה…");
+  try {
+    const payload = await Promise.all(files.map(filePayload));
+    const res = await call("scanReceipt", 90000)({ files: payload });
+    if (seq !== scanSeq) return;
+    aiResult = res.data;
+    applyScan(res.data, force);
+    scanStatus("done", "הפרטים מולאו אוטומטית. בדקו אותם לפני השמירה.");
+  } catch (e) {
+    if (seq !== scanSeq) return;
+    scanStatus("error", errMsg(e));
+  } finally {
+    if (seq === scanSeq) {
+      scanning = false;
+      setSaveState();
+    }
+  }
+}
+
+$("btn-rescan").addEventListener("click", () => {
+  aiResult = null;
+  runScan(true);
+});
+
+function applyScan(d, force) {
+  const f = form.elements;
+  const set = (name, value) => {
+    if (value == null || value === "") return;
+    if (!force && userEdited.has(name)) return;
+    f[name].value = value;
+  };
+  set("productName", d.productName);
+  set("store", d.store);
+  set("amount", d.amount);
+  set("date", d.purchaseDate);
+  set("time", d.purchaseTime);
+  if (d.categoryId && categories.some((c) => c.id === d.categoryId)) set("categoryId", d.categoryId);
+  if (d.tags?.length) set("tags", d.tags.join(", "));
+  if (d.warrantyMonths != null && (force || !userEdited.has("warrantyMonths"))) {
+    f.warrantyMonths.value = d.warrantyMonths;
+    warrantyTouched = true;
+  }
+  set("serialNumber", d.serialNumber);
+  updateWarrantyEnd();
+
+  // סימון שדות שה-AI לא בטוח בהם, או שלא מצא בכלל
+  form.querySelectorAll(".uncertain").forEach((n) => n.classList.remove("uncertain"));
+  const conf = d.confidence || {};
+  for (const [key, name] of Object.entries(CONFIDENCE_FIELDS)) {
+    if (userEdited.has(name) && !force) continue;
+    const missing = ["productName", "amount", "purchaseDate"].includes(key) && d[key] == null;
+    const low = d[key] != null && typeof conf[key] === "number" && conf[key] < 0.7;
+    if (missing || low) f[name].closest(".field")?.classList.add("uncertain");
+  }
+}
+
+// כל עריכה ידנית מסמנת את השדה כ"נערך" כדי שהסריקה לא תדרוס אותו, ומסירה את סימון אי-הוודאות
+form.addEventListener("input", (e) => {
+  if (!e.target.name) return;
+  userEdited.add(e.target.name);
+  e.target.closest(".field")?.classList.remove("uncertain", "invalid");
+});
 
 $("pick-camera").addEventListener("change", async (e) => { await addPendingFiles(e.target.files); e.target.value = ""; });
 $("pick-file").addEventListener("change", async (e) => { await addPendingFiles(e.target.files); e.target.value = ""; });
@@ -547,7 +655,7 @@ form.addEventListener("submit", async (ev) => {
     } else {
       busy("מעלה לדרייב ושומר…");
       const files = await Promise.all(pendingFiles.map(filePayload));
-      const res = await call("saveReceipt")({ receipt, files });
+      const res = await call("saveReceipt")({ receipt, files, ai: aiResult });
       pendingFiles.forEach((x) => x.previewUrl && URL.revokeObjectURL(x.previewUrl));
       pendingFiles = [];
       location.hash = `#/r/${res.data.id}`;
