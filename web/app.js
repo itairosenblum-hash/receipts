@@ -189,7 +189,7 @@ async function prepareFile(file, kind) {
   if (mimeType.startsWith("image/") && mimeType !== "image/gif") {
     try {
       const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-      const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
+      const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
       const canvas = document.createElement("canvas");
       canvas.width = Math.round(bitmap.width * scale);
       canvas.height = Math.round(bitmap.height * scale);
@@ -569,7 +569,7 @@ async function runScan(force) {
   scanStatus("busy", "Gemini קורא את הקבלה…");
   try {
     const payload = await Promise.all(files.map(filePayload));
-    const res = await call("scanReceipt", 90000)({ files: payload });
+    const res = await call("scanReceipt", 200000)({ files: payload });
     if (seq !== scanSeq) return;
     aiResult = res.data;
     applyScan(res.data, force);
@@ -1131,7 +1131,7 @@ async function scanBulkItem(item) {
   item.status = "scanning";
   renderBulk();
   try {
-    const res = await call("scanReceipt", 90000)({ files: [await filePayload(item.file)] });
+    const res = await call("scanReceipt", 200000)({ files: [await filePayload(item.file)] });
     item.ai = res.data;
     item.status = bulkComplete(res.data) ? "ready" : "review";
   } catch (e) {

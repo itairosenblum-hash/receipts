@@ -5,7 +5,7 @@ import { setGlobalOptions, logger } from "firebase-functions/v2";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { OAuth2Client } from "google-auth-library";
 import { drive as driveApi } from "@googleapis/drive";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { Readable } from "node:stream";
 import crypto from "node:crypto";
 
@@ -403,7 +403,7 @@ function cleanAi(ai) {
   };
 }
 
-export const scanReceipt = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 120, memory: "512MiB" }, async (request) => {
+export const scanReceipt = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 300, memory: "512MiB" }, async (request) => {
   await requireAllowed(request);
   const files = decodeFiles(request.data?.files || []).slice(0, 3);
   if (!files.length) throw new HttpsError("invalid-argument", "אין קובץ לסריקה");
@@ -431,7 +431,8 @@ export const scanReceipt = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 1
   const schema = structuredClone(SCAN_SCHEMA);
   schema.properties.categoryId.enum = ids;
 
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY.value() });
+  // מגבלת זמן לבקשה ל-Gemini, קצרה ממגבלת הפונקציה כדי להחזיר שגיאה ברורה במקום ניתוק
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY.value(), httpOptions: { timeout: 150000 } });
   let result;
   try {
     const res = await ai.models.generateContent({
@@ -447,13 +448,18 @@ export const scanReceipt = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 1
         systemInstruction: SCAN_INSTRUCTIONS,
         responseMimeType: "application/json",
         responseSchema: schema,
-        temperature: 0
+        temperature: 0,
+        // קריאת קבלה לא דורשת חשיבה ארוכה; ברירת המחדל של המודל איטית מדי
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       }
     });
     result = JSON.parse(res.text);
   } catch (e) {
     logger.error("gemini scan failed", e);
-    throw new HttpsError("internal", "הסריקה נכשלה. אפשר למלא את הפרטים ידנית.");
+    const timedOut = /timeout|aborted/i.test(String(e?.message || e?.cause?.message || ""));
+    throw new HttpsError("internal", timedOut
+      ? "הסריקה לקחה יותר מדי זמן. נסו סריקה חוזרת או מלאו ידנית."
+      : "הסריקה נכשלה. אפשר למלא את הפרטים ידנית.");
   }
 
   // ניקוי ובדיקות סבירות
