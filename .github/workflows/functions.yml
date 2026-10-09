@@ -73,4 +73,13 @@ jobs:
           done
 
       - name: Deploy
-        run: firebase deploy --only functions,firestore:rules --project "$PROJECT" --non-interactive --force
+        run: |
+          set +e
+          firebase deploy --only functions,firestore:rules --project "$PROJECT" --non-interactive --force 2>&1 | tee deploy.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # מציג את סיבת הכישלון כהערה בסיכום הריצה
+            msg="$( (grep -iE 'error|denied|permission|failed|required|enable' deploy.log; [ -f firebase-debug.log ] && grep -iE '"message"|error:' firebase-debug.log) | grep -v '^\s*$' | tail -25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            echo "::error title=firebase deploy failed::${msg}"
+          fi
+          exit $status
