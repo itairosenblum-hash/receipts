@@ -1073,3 +1073,9 @@ function route() {
   show("list");
 }
 window.addEventListener("hashchange", route);
+
+/* ---------- התקנה כאפליקציה ---------- */
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch((e) => console.warn("sw", e));
+}
