@@ -83,3 +83,16 @@ jobs:
             echo "::error title=firebase deploy failed::${msg}"
           fi
           exit $status
+
+      - name: Diagnostics
+        if: always()
+        run: |
+          set +e
+          tail -40 deploy.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}' > tail.txt
+          echo "::notice title=deploy log tail::$(cat tail.txt)"
+          list="$(gcloud functions list --project "$PROJECT" --regions=europe-west1 --format='value(name,state,environment)' 2>&1 | awk '{printf "%s%%0A", $0}')"
+          echo "::notice title=functions::${list}"
+          for svc in driveauthurl savereceipt scanreceipt; do
+            pol="$(gcloud run services get-iam-policy "$svc" --region europe-west1 --project "$PROJECT" --format='value(bindings)' 2>&1 | head -5 | awk '{printf "%s%%0A", $0}')"
+            echo "::notice title=invoker ${svc}::${pol}"
+          done

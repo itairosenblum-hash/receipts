@@ -130,7 +130,7 @@ function errMsg(e) {
   const msg = String(e?.message || "");
   if (/[֐-׿]/.test(msg)) return msg;
   if (code.includes("not-found") || code.includes("unavailable") || code.includes("internal")) {
-    return "השרת לא זמין. ייתכן שה-Cloud Functions עוד לא נפרסו.";
+    return `השרת לא זמין (${code.replace("functions/", "")}).`;
   }
   if (code.includes("deadline-exceeded")) return "הפעולה לקחה יותר מדי זמן. נסו שוב.";
   if (code.includes("permission-denied")) return "אין הרשאה לפעולה הזו";
