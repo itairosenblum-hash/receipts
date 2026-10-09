@@ -443,12 +443,6 @@ function updateWarrantyEnd() {
   out.textContent = `בתוקף עד ${fmtDate(end)}`;
 }
 
-form.elements.categoryId.addEventListener("change", () => {
-  if (warrantyTouched) return;
-  const c = categories.find((x) => x.id === form.elements.categoryId.value);
-  if (c && c.warrantyMonths) form.elements.warrantyMonths.value = c.warrantyMonths;
-  updateWarrantyEnd();
-});
 form.elements.warrantyMonths.addEventListener("input", () => { warrantyTouched = true; updateWarrantyEnd(); });
 form.elements.date.addEventListener("input", updateWarrantyEnd);
 

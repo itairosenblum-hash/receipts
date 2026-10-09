@@ -309,7 +309,7 @@ Rules:
 - purchaseTime: HH:MM in 24h, or null.
 - categoryId: exactly one of the category ids given. Follow the user's past corrections when a similar product appears.
 - tags: up to 3 short Hebrew tags useful for search (room, use, occasion). Prefer existing tags when they fit.
-- warrantyMonths: if the receipt states a warranty period (אחריות X שנים / חודשים, including a purchased extended warranty), use it and set warrantyFromReceipt=true. Otherwise use the category's typical warranty and set warrantyFromReceipt=false.
+- warrantyMonths: ONLY if the document explicitly states a warranty period (אחריות X שנים / חודשים, including a purchased extended warranty). Then set warrantyFromReceipt=true. If no period is printed, warrantyMonths must be null and warrantyFromReceipt=false. Never estimate or use a typical value.
 - serialNumber: only if printed (מס' סידורי, S/N, IMEI), else null.
 - Use null for anything not on the document. Never invent dates or amounts.
 - confidence: 0 to 1 per field, honest. Use below 0.7 when the text is blurry, cut off or ambiguous.`;
@@ -377,8 +377,8 @@ export const scanReceipt = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 1
   const existingTags = [...new Set(recSnap.docs.flatMap((d) => d.data().tags || []))].slice(0, 60);
 
   const context = [
-    "Categories (id: name, typical warranty months):",
-    ...categories.map((c) => `- ${c.id}: ${c.name}, ${c.warrantyMonths || 0}`),
+    "Categories (id: name):",
+    ...categories.map((c) => `- ${c.id}: ${c.name}`),
     corrections.length ? "\nPast corrections by the user (product → correct category):" : "",
     ...corrections.map((c) => `- "${c.productName}" from "${c.store}": not ${c.suggested}, correct is ${c.chosen}`),
     existingTags.length ? `\nExisting tags: ${existingTags.join(", ")}` : "",
@@ -426,7 +426,7 @@ export const scanReceipt = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 1
     purchaseTime: valid(/^([01]\d|2[0-3]):[0-5]\d$/, result.purchaseTime),
     categoryId: ids.includes(result.categoryId) ? result.categoryId : "other",
     tags: Array.isArray(result.tags) ? result.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 3) : [],
-    warrantyMonths: Number.isInteger(result.warrantyMonths) && result.warrantyMonths >= 0 && result.warrantyMonths <= 240 ? result.warrantyMonths : null,
+    warrantyMonths: result.warrantyFromReceipt && Number.isInteger(result.warrantyMonths) && result.warrantyMonths > 0 && result.warrantyMonths <= 240 ? result.warrantyMonths : null,
     warrantyFromReceipt: !!result.warrantyFromReceipt,
     serialNumber: result.serialNumber || null,
     confidence: result.confidence || {}
