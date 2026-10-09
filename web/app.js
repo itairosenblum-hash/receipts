@@ -1490,11 +1490,28 @@ async function scanBulkItem(item) {
     const res = await call("scanReceipt", 200000)({ files: [await filePayload(item.file)] });
     item.ai = res.data;
     item.status = bulkComplete(res.data) ? "ready" : "review";
+    item.scanFailed = false;
+    delete item.error;
   } catch (e) {
     item.status = "error";
+    item.scanFailed = true;
     item.error = errMsg(e);
   }
 }
+
+// סריקה חוזרת מתוך השורה: לקובץ שהסריקה שלו נכשלה או שחסרים בו פרטים
+const canRescan = (b) => !!b.file && !bulkSaving && b.file.size <= MAX_TOTAL_BYTES &&
+  (b.status === "review" || (b.status === "error" && b.scanFailed));
+
+function rescanBulk(list) {
+  list.forEach((b) => { b.status = "queued"; delete b.error; });
+  renderBulk();
+  pumpBulk();
+}
+
+$("bulk-retry-all").addEventListener("click", () => {
+  rescanBulk(bulkItems.filter((b) => b.status === "error" && canRescan(b)));
+});
 
 $("bulk-pick").addEventListener("change", async (e) => {
   const files = [...e.target.files];
@@ -1562,6 +1579,15 @@ function renderBulk() {
         el("span", { class: "chip " + cls }, spin && el("span", { class: "spinner small" }), label),
         b.error && el("div", { class: "error small", text: b.error }),
         el("div", { class: "bulk-actions" },
+          canRescan(b) && el("button", {
+            type: "button", class: "link-btn", text: "סריקה חוזרת",
+            onclick: () => rescanBulk([b])
+          }),
+          // שמירה שנכשלה (הסריקה עצמה הצליחה): חוזרים למצב שלפני השמירה
+          b.status === "error" && !b.scanFailed && b.ai && !bulkSaving && el("button", {
+            type: "button", class: "link-btn", text: "ניסיון חוזר",
+            onclick: () => { b.status = bulkComplete(b.ai) ? "ready" : "review"; delete b.error; renderBulk(); }
+          }),
           editable && el("a", { class: "link-btn", href: `#/bulk/edit/${b.id}`, text: b.status === "dup" ? "שמירה בכל זאת" : "בדיקה ועריכה" }),
           b.status === "saved" && b.savedId && el("a", { class: "link-btn", href: `#/r/${b.savedId}`, text: "פתיחה" }),
           removable && el("button", {
@@ -1586,6 +1612,10 @@ function renderBulk() {
     ready ? `${ready} מוכנות` : "",
     count("saved") ? `${count("saved")} נשמרו` : ""
   ].filter(Boolean).join(" · ");
+  const failed = items.filter((b) => b.status === "error" && canRescan(b)).length;
+  const retry = $("bulk-retry-all");
+  retry.hidden = failed < 2;
+  retry.textContent = `סריקה חוזרת ל-${failed} הקבצים שנכשלו`;
   const btn = $("bulk-save-all");
   btn.disabled = !ready || bulkSaving;
   btn.textContent = bulkSaving ? "שומר…" : ready === 1 ? "שמירת קבלה אחת" : ready ? `שמירת ${ready} קבלות` : "שמירת הכל";
