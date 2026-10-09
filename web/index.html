@@ -60,15 +60,131 @@
     <span class="sr-only">חיפוש</span>
     <input id="search" type="search" placeholder="חיפוש מוצר, חנות או תגית">
   </label>
+  <div id="drive-banner" class="banner" hidden>
+    <span>הדרייב עוד לא מחובר, ולכן אי אפשר לשמור קבלות.</span>
+    <a href="#/settings">לחיבור</a>
+  </div>
   <div id="receipts" class="receipts"></div>
   <div id="empty" class="empty" hidden>
     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>
     <h2>עוד אין קבלות</h2>
-    <p>העלאת קבלות תתווסף בשלב הבא של הפיתוח.</p>
+    <p>לחצו על הפלוס כדי להוסיף את הקבלה הראשונה.</p>
   </div>
-  <button class="fab" type="button" aria-label="העלאת קבלה" disabled title="יתווסף בשלב 2">
+  <a href="#/new" class="fab" aria-label="העלאת קבלה">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-  </button>
+  </a>
+</section>
+
+<!-- קבלה חדשה / עריכה -->
+<section id="view-edit" class="view view-app" hidden>
+  <header class="app-header">
+    <h1 id="edit-title">קבלה חדשה</h1>
+    <a href="#/" id="edit-close" class="icon-btn" aria-label="סגירה">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </a>
+  </header>
+
+  <div id="files-section" class="card">
+    <h2>קבצים</h2>
+    <div class="file-pick">
+      <label class="btn-secondary pick-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        צילום
+        <input id="pick-camera" type="file" accept="image/*" capture="environment" class="sr-only">
+      </label>
+      <label class="btn-secondary pick-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/></svg>
+        קובץ / PDF
+        <input id="pick-file" type="file" accept="image/*,application/pdf" multiple class="sr-only">
+      </label>
+    </div>
+    <ul id="file-list" class="file-list"></ul>
+    <p id="dup-warning" class="warn-text" hidden></p>
+  </div>
+
+  <form id="receipt-form" class="card form" novalidate>
+    <label class="field">מוצר
+      <input name="productName" required maxlength="120" placeholder="למשל: מקרר LG 600 ליטר">
+    </label>
+    <label class="field">חנות
+      <input name="store" maxlength="80">
+    </label>
+    <div class="grid-2">
+      <label class="field">סכום (₪)
+        <input name="amount" type="number" inputmode="decimal" min="0" step="0.01">
+      </label>
+      <label class="field">קטגוריה
+        <select name="categoryId" id="category-select"></select>
+      </label>
+    </div>
+    <div class="grid-2">
+      <label class="field">תאריך רכישה
+        <input name="date" type="date" required>
+      </label>
+      <label class="field">שעה (לא חובה)
+        <input name="time" type="time">
+      </label>
+    </div>
+    <label class="field">תגיות (מופרדות בפסיק)
+      <input name="tags" placeholder="מטבח, מתנה">
+    </label>
+    <div class="warranty-box">
+      <label class="field inline">אחריות
+        <input name="warrantyMonths" type="number" inputmode="numeric" min="0" max="240" class="short">
+        חודשים
+      </label>
+      <span id="warranty-end" class="muted"></span>
+    </div>
+    <label class="field">מספר סידורי (לא חובה)
+      <input name="serialNumber" maxlength="80" placeholder="מופיע על מדבקת המוצר" dir="auto">
+    </label>
+    <label class="field">הערות
+      <textarea name="notes" rows="3" maxlength="1000"></textarea>
+    </label>
+    <p id="form-error" class="error" hidden></p>
+    <div class="form-actions">
+      <button type="submit" id="btn-save" class="btn-primary grow">שמירה</button>
+      <a href="#/" id="btn-cancel" class="btn-secondary">ביטול</a>
+    </div>
+  </form>
+</section>
+
+<!-- פרטי קבלה -->
+<section id="view-detail" class="view view-app" hidden>
+  <header class="app-header">
+    <a href="#/" class="icon-btn" aria-label="חזרה">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+    </a>
+    <a id="detail-edit" href="#/" class="icon-btn" aria-label="עריכה">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>
+    </a>
+  </header>
+  <div class="detail-head">
+    <div id="detail-category" class="eyebrow"></div>
+    <h1 id="detail-title"></h1>
+    <div id="detail-amount" class="big-amount"></div>
+  </div>
+  <div id="detail-warranty" class="card"></div>
+  <dl id="detail-rows" class="card rows"></dl>
+  <div class="card">
+    <h2>קבצים</h2>
+    <ul id="detail-files" class="file-list"></ul>
+    <div class="add-file">
+      <label class="field inline">סוג
+        <select id="add-file-kind">
+          <option value="warranty">תעודת אחריות</option>
+          <option value="label">מדבקה</option>
+          <option value="receipt">קבלה</option>
+          <option value="other">אחר</option>
+        </select>
+      </label>
+      <label class="btn-secondary pick-btn grow">
+        + הוספת קובץ
+        <input id="add-file-input" type="file" accept="image/*,application/pdf" class="sr-only">
+      </label>
+    </div>
+  </div>
+  <button id="btn-delete" class="btn-danger" type="button">מחיקת קבלה</button>
 </section>
 
 <!-- הגדרות -->
@@ -87,6 +203,13 @@
     <button id="btn-logout" class="btn-secondary" type="button">יציאה</button>
   </div>
 
+  <div class="card" id="drive-card">
+    <h2>Google Drive</h2>
+    <p id="drive-status" class="muted"></p>
+    <a id="drive-folder-link" href="#" target="_blank" rel="noopener" hidden>פתיחת התיקייה בדרייב</a>
+    <button id="btn-drive-connect" class="btn-primary" type="button" hidden>חיבור Google Drive</button>
+  </div>
+
   <div class="card" id="access-card">
     <h2>חשבונות מורשים</h2>
     <p class="muted" id="access-hint"></p>
@@ -101,6 +224,20 @@
   </div>
 </section>
 
+<div id="viewer" class="viewer" role="dialog" aria-modal="true" aria-labelledby="viewer-title" hidden>
+  <div class="viewer-bar">
+    <button id="viewer-close" class="icon-btn light" type="button" aria-label="סגירה">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <span id="viewer-title" class="viewer-title"></span>
+    <a id="viewer-download" class="viewer-action" href="#" download>הורדה</a>
+  </div>
+  <div id="viewer-body" class="viewer-body"></div>
+</div>
+
+<div id="busy" class="busy" hidden>
+  <div class="busy-box"><div class="spinner"></div><span id="busy-text">שומר…</span></div>
+</div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>
