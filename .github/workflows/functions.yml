@@ -1,5 +1,5 @@
 name: Deploy Firebase (functions + rules)
-# פריסה אוטומטית של ה-Cloud Functions וה-Rules בכל שינוי ב-main.
+# פריסה אוטומטית של ה-Cloud Functions וה-Rules בכל שינוי ב-main (גם ידנית: Run workflow).
 # נדרשים Secrets בריפו: FIREBASE_SERVICE_ACCOUNT, GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GEMINI_API_KEY
 
 on:
