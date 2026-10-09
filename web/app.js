@@ -25,6 +25,9 @@ const $ = (id) => document.getElementById(id);
 const VIEWS = ["loading", "login", "denied", "list", "edit", "detail", "settings", "bulk"];
 const FILE_KINDS = { receipt: "קבלה", warranty: "תעודת אחריות", label: "מדבקה", other: "אחר" };
 const MAX_TOTAL_BYTES = 7 * 1024 * 1024;
+// הכתובת הראשית של האפליקציה, לקישורים ששולחים לאחרים
+const SHARE_URL = "https://shopping-fa855.web.app/";
+const whatsappHref = (text) => "https://wa.me/?text=" + encodeURIComponent(text);
 const DEFAULT_CATEGORIES = [
   ["appliances", "מוצרי חשמל", 12],
   ["electronics", "אלקטרוניקה ומחשבים", 12],
@@ -938,6 +941,7 @@ function openDetail(id) {
 }
 
 function renderDetail(r) {
+  $("btn-whatsapp").href = whatsappHref(whatsappReceiptText(r));
   $("detail-edit").href = `#/r/${r.id}/edit`;
   $("detail-category").textContent = categoryName(r.categoryId);
   // מהיקר לזול, כך שהמוצר הראשי מופיע ראשון
@@ -1152,8 +1156,16 @@ function receiptSummary(r) {
 function resetShareButton() {
   sharePrepared = null;
   $("btn-share").classList.remove("ready");
-  $("btn-share-text").textContent = "שיתוף הקבלה";
+  $("btn-share-text").textContent = "שיתוף עם הקובץ";
 }
+
+// הודעת וואטסאפ להוצאה: הפרטים וקישור שפותח את הקבלה באפליקציה (לחשבונות מורשים)
+function whatsappReceiptText(r) {
+  const title = mainItem(itemsOf(r))?.name || "קבלה";
+  return `*${title}*\n${receiptSummary(r)}\n\nהקבלה באפליקציה: ${SHARE_URL}#/r/${r.id}`;
+}
+
+$("btn-share-app").href = whatsappHref(`קבלות ואחריות: כל הקבלות והאחריות של הבית במקום אחד\n${SHARE_URL}`);
 
 async function doShare(p) {
   try {

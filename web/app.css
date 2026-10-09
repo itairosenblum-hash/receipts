@@ -321,6 +321,9 @@ a.btn-secondary, a.btn-primary { display: inline-flex; align-items: center; just
 .rows dd { margin: 0; font-size: 15px; font-weight: 600; text-align: left; overflow-wrap: anywhere; white-space: pre-line; }
 
 .share-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 50px; }
+.share-row { display: flex; gap: 10px; }
+.share-btn.whatsapp { color: #128C4A; text-decoration: none; padding: 0 16px; flex: none; }
+#share-app-card .share-btn.whatsapp { width: 100%; }
 .share-btn.ready { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* Busy overlay */
