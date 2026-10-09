@@ -72,6 +72,14 @@ jobs:
               echo "$name unchanged"
             fi
           done
+          # הפונקציות ננעלות על גרסת הסוד שהייתה בזמן הפריסה, ופריסה מדלגת על פונקציות שהקוד שלהן לא השתנה.
+          # כתיבת מספרי הגרסאות לקובץ בתיקיית הפונקציות מבטיחה פריסה מחדש בכל פעם שסוד מתעדכן.
+          for name in GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GEMINI_API_KEY; do
+            v="$(gcloud secrets versions list "$name" --project "$PROJECT" --filter='state=ENABLED' --sort-by='~createTime' --limit=1 --format='value(name)')"
+            echo "$name=$v"
+          done > functions/.secret-versions
+          cat functions/.secret-versions
+          echo "::notice title=secret versions::$(awk '{printf "%s%%0A", $0}' functions/.secret-versions)"
 
       - name: Deploy
         run: |
@@ -109,6 +117,9 @@ jobs:
             pols="${pols}${svc}: ${p}%0A"
           done
           echo "::notice title=invokers::${pols}"
+          used="$(gcloud run services describe drivecallback --region europe-west1 --project "$PROJECT" --format=json 2>&1 \
+            | grep -oE '"(key|name)": "(GOOGLE_OAUTH_CLIENT_[A-Z]+|[0-9]+|latest)"' | paste -sd' ' | sed 's/%/%25/g')"
+          echo "::notice title=drivecallback secret refs::${used}"
           logs="$(gcloud logging read 'resource.type="cloud_run_revision" AND severity>=ERROR' --project "$PROJECT" --freshness=2h --limit=8 \
             --format='value(timestamp,resource.labels.service_name,jsonPayload.message,textPayload)' 2>&1 \
             | cut -c1-600 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
