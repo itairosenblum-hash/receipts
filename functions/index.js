@@ -139,7 +139,8 @@ function cleanReceipt(r) {
     ? [...new Set(r.tags.map((t) => String(t).trim().slice(0, 30)).filter(Boolean))].slice(0, 10)
     : [];
   return {
-    productName: items[0].name,
+    // השם הראשי: המוצר היקר ביותר (משמש לשם הקובץ בדרייב, לתיקוני סיווג ולתצוגה)
+    productName: items.reduce((best, it) => ((it.price ?? -1) > (best.price ?? -1) ? it : best), items[0]).name,
     itemNames: items.flatMap((it) => [it.name, it.printedName].filter(Boolean)),
     items,
     store: String(r.store || "").trim().slice(0, 80),

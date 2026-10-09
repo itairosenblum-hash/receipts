@@ -136,6 +136,12 @@ function itemsOf(r) {
   }];
 }
 
+// המוצר "הראשי" של קבלה: זה עם המחיר הגבוה ביותר. בלי מחירים, או בשוויון, נשאר הסדר שבקבלה.
+function mainItem(items) {
+  if (!items?.length) return null;
+  return items.reduce((best, it) => ((typeof it.price === "number" ? it.price : -1) > (typeof best.price === "number" ? best.price : -1) ? it : best), items[0]);
+}
+
 // תגית אחריות לקבלה: המוצר שהאחריות שלו תיגמר הכי קרוב מבין אלה שעדיין בתוקף; אם כולן פגו, "פגה"
 function warrantyInfo(r) {
   const states = itemsOf(r).map((it) => warrantyStatus(it.warrantyEnd)).filter(Boolean);
@@ -411,7 +417,7 @@ function renderReceipts() {
     return el("a", { class: "receipt", href: `#/r/${r.id}` },
       el("div", { class: "receipt-main" },
         el("div", { class: "receipt-title" },
-          items[0]?.name || r.productName || "ללא שם",
+          mainItem(items)?.name || r.productName || "ללא שם",
           items.length > 1 && el("span", { class: "more-items", text: ` +${items.length - 1}` })
         ),
         el("div", { class: "receipt-sub", text: [r.store, fmtDate(toDate(r.purchaseDate))].filter(Boolean).join(" · ") }),
@@ -826,7 +832,7 @@ form.addEventListener("submit", async (ev) => {
       await updateDoc(doc(db, "receipts", editingId), {
         ...receipt,
         items: savedItems,
-        productName: savedItems[0].name,
+        productName: mainItem(savedItems).name,
         itemNames: savedItems.flatMap((it) => [it.name, it.printedName].filter(Boolean)),
         purchaseDate: Timestamp.fromMillis(purchaseMs),
         warrantyEnd: ends.length ? Timestamp.fromMillis(Math.max(...ends)) : null,
@@ -846,7 +852,7 @@ form.addEventListener("submit", async (ev) => {
       if (fromBulk) {
         fromBulk.status = "saved";
         fromBulk.savedId = res.data.id;
-        fromBulk.title = receipt.items[0]?.name || fromBulk.title;
+        fromBulk.title = mainItem(receipt.items)?.name || fromBulk.title;
         bulkEditId = null;
         if (!finishBulkIfDone(0)) {
           location.hash = "#/bulk";
@@ -899,7 +905,7 @@ function renderDetail(r) {
   $("detail-category").textContent = categoryName(r.categoryId);
   const items = itemsOf(r);
   const start = toDate(r.purchaseDate);
-  $("detail-title").textContent = items.length > 1 ? (r.store || "קבלה") : (items[0]?.name || "ללא שם");
+  $("detail-title").textContent = items.length > 1 ? (r.store || "קבלה") : (mainItem(items)?.name || "ללא שם");
   $("detail-amount").textContent = fmtAmount(r.amount, r.currency || "ILS");
 
   // מוצרים, לכל אחד האחריות שלו
@@ -1152,7 +1158,7 @@ $("btn-share").addEventListener("click", async () => {
       const bytes = Uint8Array.from(atob(res.data.data), (c) => c.charCodeAt(0));
       files.push(new File([bytes], f.name, { type: res.data.mimeType }));
     }
-    const title = itemsOf(r)[0]?.name || "קבלה";
+    const title = mainItem(itemsOf(r))?.name || "קבלה";
     sharePrepared = { receiptId: r.id, files, title, text: receiptSummary(r) };
   } catch (e) {
     busy(null);
@@ -1474,7 +1480,7 @@ $("bulk-save-all").addEventListener("click", async () => {
       });
       item.status = "saved";
       item.savedId = res.data.id;
-      item.title = item.ai.items[0]?.name || item.title;
+      item.title = mainItem(item.ai.items)?.name || item.title;
     } catch (e) {
       item.status = "error";
       item.error = "השמירה נכשלה: " + errMsg(e);
@@ -1505,7 +1511,7 @@ function renderBulk() {
     const [cls, label, spin] = BULK_STATUS[b.status] || BULK_STATUS.error;
     const ai = b.ai;
     const names = ai?.items?.map((it) => it.name) || [];
-    const title = b.status === "saved" ? b.title : (names[0] || b.title);
+    const title = b.status === "saved" ? b.title : (mainItem(ai?.items)?.name || b.title);
     const date = ai?.purchaseDate ? fmtDate(new Date(ai.purchaseDate + "T12:00")) : "";
     const sub = [ai?.store, date, typeof ai?.amount === "number" ? fmtAmount(ai.amount, ai.currency || "ILS") : ""].filter(Boolean).join(" · ");
     const editable = ["ready", "review", "dup", "error"].includes(b.status) && b.file && !bulkSaving;
