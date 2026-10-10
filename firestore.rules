@@ -39,6 +39,22 @@ service cloud.firestore {
       allow read, create: if isAllowed();
     }
 
+    // מסמכים רפואיים: מודול נפרד. קריאה למורשים בלבד; כל כתיבה עוברת דרך ה-Functions
+    // (שם מתבצעת גם ההעלאה לתיקייה הנפרדת בדרייב), כך שאין כתיבה ישירה מהדפדפן
+    match /medical/{id} {
+      allow read: if isAllowed();
+      allow write: if false;
+    }
+
+    // בני משפחה לשיוך מסמכים רפואיים
+    match /medicalMembers/{id} {
+      allow read, delete: if isAllowed();
+      allow create, update: if isAllowed()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 40;
+    }
+
     // טוקני התראות: כל משתמש מנהל רק את שלו
     match /tokens/{uid} {
       allow read, write: if isAllowed() && request.auth.uid == uid;

@@ -10,6 +10,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
+import { initMedical } from "./medical.js?v=1";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -22,7 +23,7 @@ const accessRef = doc(db, "config", "access");
 const driveRef = doc(db, "config", "drive");
 
 const $ = (id) => document.getElementById(id);
-const VIEWS = ["loading", "login", "denied", "list", "edit", "detail", "settings", "bulk"];
+const VIEWS = ["loading", "login", "denied", "list", "edit", "detail", "settings", "bulk", "medical", "med-edit", "med-detail"];
 const FILE_KINDS = { receipt: "קבלה", warranty: "תעודת אחריות", label: "מדבקה", other: "אחר" };
 const MAX_TOTAL_BYTES = 7 * 1024 * 1024;
 // הכתובת הראשית של האפליקציה, לקישורים ששולחים לאחרים
@@ -424,6 +425,8 @@ function startApp() {
     renderDrive();
   }, (e) => console.error(e)));
 
+  medical.start(unsubs);
+
   unsubs.push(onSnapshot(accessRef, renderAccess, (e) => {
     console.error(e);
     $("access-error").textContent = "לא ניתן לטעון את רשימת המורשים";
@@ -442,13 +445,14 @@ async function seedCategories() {
 }
 
 function renderAvatar() {
-  const a = $("avatar");
-  a.replaceChildren();
-  if (currentUser.photoURL) {
-    a.append(el("img", { src: currentUser.photoURL, alt: "", referrerpolicy: "no-referrer" }));
-  } else {
-    a.textContent = (currentUser.displayName || currentUser.email || "?").trim().charAt(0).toUpperCase();
-  }
+  document.querySelectorAll(".avatar").forEach((a) => {
+    a.replaceChildren();
+    if (currentUser.photoURL) {
+      a.append(el("img", { src: currentUser.photoURL, alt: "", referrerpolicy: "no-referrer" }));
+    } else {
+      a.textContent = (currentUser.displayName || currentUser.email || "?").trim().charAt(0).toUpperCase();
+    }
+  });
 }
 
 /* ---------- list ---------- */
@@ -1190,35 +1194,40 @@ async function openFile(receiptId, f) {
   busy("טוען קובץ…");
   try {
     const res = await call("getFile", 60000)({ receiptId, driveFileId: f.driveFileId });
-    const bytes = Uint8Array.from(atob(res.data.data), (c) => c.charCodeAt(0));
-    const blob = new Blob([bytes], { type: res.data.mimeType });
-    const url = URL.createObjectURL(blob);
-    const body = $("viewer-body");
-    const isPdf = res.data.mimeType === "application/pdf";
-    body.classList.toggle("pdf", isPdf);
-    body.replaceChildren();
-    $("viewer-title").textContent = f.name;
-    $("viewer-download").href = url;
-    $("viewer-download").setAttribute("download", f.name);
-    const drive = $("viewer-drive");
-    drive.hidden = !(isAdmin && f.webViewLink);
-    if (f.webViewLink) drive.href = f.webViewLink;
-    $("viewer").hidden = false;
-    $("viewer").dataset.url = url;
-    if (isPdf) {
-      try {
-        await renderPdf(bytes.slice(), body);
-      } catch (e) {
-        console.error(e);
-        body.replaceChildren(el("p", { class: "viewer-msg", text: "לא ניתן להציג את הקובץ כאן. אפשר להוריד אותו או לפתוח בדרייב." }));
-      }
-    } else {
-      body.append(el("img", { src: url, alt: f.name }));
-    }
+    await displayFile(f, res.data);
   } catch (e) {
     toast(errMsg(e));
   } finally {
     busy(null);
+  }
+}
+
+// מציג קובץ שהגיע מהשרת (base64) בחלון הצפייה. משמש גם את המסמכים הרפואיים.
+async function displayFile(f, data) {
+  const bytes = Uint8Array.from(atob(data.data), (c) => c.charCodeAt(0));
+  const blob = new Blob([bytes], { type: data.mimeType });
+  const url = URL.createObjectURL(blob);
+  const body = $("viewer-body");
+  const isPdf = data.mimeType === "application/pdf";
+  body.classList.toggle("pdf", isPdf);
+  body.replaceChildren();
+  $("viewer-title").textContent = f.name;
+  $("viewer-download").href = url;
+  $("viewer-download").setAttribute("download", f.name);
+  const drive = $("viewer-drive");
+  drive.hidden = !(isAdmin && f.webViewLink);
+  if (f.webViewLink) drive.href = f.webViewLink;
+  $("viewer").hidden = false;
+  $("viewer").dataset.url = url;
+  if (isPdf) {
+    try {
+      await renderPdf(bytes.slice(), body);
+    } catch (e) {
+      console.error(e);
+      body.replaceChildren(el("p", { class: "viewer-msg", text: "לא ניתן להציג את הקובץ כאן. אפשר להוריד אותו או לפתוח בדרייב." }));
+    }
+  } else {
+    body.append(el("img", { src: url, alt: f.name }));
   }
 }
 
@@ -1371,6 +1380,7 @@ $("btn-share").addEventListener("click", async () => {
 function renderDrive() {
   const connected = !!driveCfg?.connected;
   $("drive-banner").hidden = connected;
+  medical.refresh();
   const status = $("drive-status");
   if (connected) {
     status.textContent = `מחובר לחשבון ${driveCfg.email}. הקבצים נשמרים בתיקייה "${driveCfg.folderName || ""}", בתת-תיקייה לפי שנה.`;
@@ -1838,6 +1848,14 @@ window.addEventListener("beforeunload", (e) => {
   }
 });
 
+/* ---------- medical documents (separate module) ---------- */
+
+const medical = initMedical({
+  db, call, $, el, toast, busy, show, currentView, errMsg, norm,
+  toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile,
+  MAX_TOTAL_BYTES, isAdmin: () => isAdmin, driveConnected: () => (driveCfg ? !!driveCfg.connected : true)
+});
+
 /* ---------- routing ---------- */
 
 function route() {
@@ -1852,6 +1870,11 @@ function route() {
     }
     show("settings");
     renderNotify();
+    medical.renderSettings();
+    return;
+  }
+  if (hash === "#/m" || hash.startsWith("#/m/")) {
+    medical.route(hash);
     return;
   }
   if (hash === "#/bulk") {
