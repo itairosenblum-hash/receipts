@@ -470,3 +470,9 @@ html[data-vt="to-rec"]::view-transition-new(root) { animation-name: vt-in-right;
 #view-med-bulk > .pick-btn { flex: none; height: 50px; }
 #med-bulk-member-field { gap: 8px; }
 .bulk-sub .tag-member { margin-inline-start: 6px; }
+
+/* Refresh */
+.refresh-btn { border: 0; background: transparent; cursor: pointer; color: var(--ink-2); border-radius: 22px; }
+.refresh-btn:active { background: var(--line-soft); }
+.refresh-btn.spinning svg { animation: spin .8s linear infinite; }
+.refresh-btn:disabled { cursor: default; }
