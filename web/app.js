@@ -360,7 +360,9 @@ async function filesFromDrop(dataTransfer) {
   return out;
 }
 
-const canPickFolders = "webkitdirectory" in document.createElement("input") && matchMedia("(pointer: fine)").matches;
+// בחירת תיקייה: מחשבים, Chrome לאנדרואיד, Safari מ-iOS 18.4. גרירה רלוונטית רק עם עכבר
+const canPickFolders = "webkitdirectory" in document.createElement("input");
+const canDrag = matchMedia("(pointer: fine)").matches;
 
 // מחבר כפתור תיקייה וגרירה למסך ייבוא. onFiles מקבל את הקבצים המתאימים בלבד
 function setupBulkSources(viewId, folderInputId, onFiles) {
@@ -369,9 +371,13 @@ function setupBulkSources(viewId, folderInputId, onFiles) {
   const pop = view.querySelector(".pick-pop");
   const filesInput = pop.querySelector('input:not([webkitdirectory])');
   // כפתור אחד: במחשב נפתח תפריט קטן (קבצים / תיקייה שלמה); בטלפון, שבו אי אפשר לבחור תיקייה, נפתח ישר בורר הקבצים
-  if (!canPickFolders) {
-    main.lastChild.textContent = " בחירת קבצים ";
-    view.querySelector(".drop-hint").hidden = true;
+  if (!canPickFolders) main.lastChild.textContent = " בחירת קבצים ";
+  // בטלפון הרמז על גרירה לא רלוונטי; נשאר רק החלק על שמות התיקיות, אם יש
+  const hint = view.querySelector(".drop-hint");
+  if (!canDrag) {
+    const rest = hint.textContent.split(". ").slice(1).join(". ");
+    hint.textContent = canPickFolders ? rest : "";
+    hint.hidden = !hint.textContent;
   }
   const close = () => { pop.hidden = true; main.setAttribute("aria-expanded", "false"); };
   main.addEventListener("click", (e) => {
