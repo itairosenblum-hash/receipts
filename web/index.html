@@ -14,8 +14,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=22">
-<script type="module" src="app.js?v=28"></script>
+<link rel="stylesheet" href="app.css?v=23">
+<script type="module" src="app.js?v=29"></script>
 </head>
 <body>
 
@@ -419,11 +419,19 @@
     <span>מסמכים שלא זוהה של מי הם ישויכו ל:</span>
     <div class="chip-row wrap" id="med-bulk-member"></div>
   </div>
+  <div class="file-pick bulk-pick-row">
   <label class="btn-secondary pick-btn">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/><path d="M12 11v6M9 14h6"/></svg>
     בחירת קבצים
     <input id="med-bulk-pick" type="file" accept="image/*,application/pdf" multiple class="sr-only">
   </label>
+  <label class="btn-secondary pick-btn folder-pick" hidden>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg>
+    בחירת תיקייה
+    <input id="med-bulk-folder" type="file" webkitdirectory multiple class="sr-only">
+  </label>
+  </div>
+  <p class="muted small drop-hint" hidden>אפשר גם לגרור לכאן קבצים או תיקייה שלמה. תיקייה בשם של בן משפחה תשויך אליו.</p>
   <div id="med-bulk-summary" class="bulk-summary" hidden>
     <span id="med-bulk-progress" class="grow"></span>
     <button id="med-bulk-save-all" type="button" class="btn-primary">שמירת הכל</button>
@@ -441,11 +449,19 @@
     </a>
   </header>
   <p class="muted bulk-intro">בוחרים כמה קבצים בבת אחת. כל קובץ הוא קבלה נפרדת: Gemini סורק אותה, ואתם בודקים ושומרים.</p>
+  <div class="file-pick bulk-pick-row">
   <label class="btn-secondary pick-btn">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/><path d="M12 11v6M9 14h6"/></svg>
     בחירת קבצים
     <input id="bulk-pick" type="file" accept="image/*,application/pdf" multiple class="sr-only">
   </label>
+  <label class="btn-secondary pick-btn folder-pick" hidden>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg>
+    בחירת תיקייה
+    <input id="bulk-folder" type="file" webkitdirectory multiple class="sr-only">
+  </label>
+  </div>
+  <p class="muted small drop-hint" hidden>אפשר גם לגרור לכאן קבצים או תיקייה שלמה.</p>
   <div id="bulk-summary" class="bulk-summary" hidden>
     <span id="bulk-progress" class="grow"></span>
     <button id="bulk-save-all" type="button" class="btn-primary">שמירת הכל</button>

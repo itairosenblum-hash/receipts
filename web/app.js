@@ -10,7 +10,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
-import { initMedical } from "./medical.js?v=2";
+import { initMedical } from "./medical.js?v=3";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -325,6 +325,69 @@ async function prepareFile(file, kind) {
     size: blob.size,
     previewUrl: mimeType.startsWith("image/") ? URL.createObjectURL(blob) : null
   };
+}
+
+/* ---------- folders and drag & drop (bulk import) ---------- */
+
+// מתוך תיקייה או גרירה: רק תמונות ו-PDF, בלי קבצים מוסתרים (כמו .DS_Store)
+function pickableFiles(list) {
+  const all = [...list];
+  const ok = all.filter((f) => !/(^|\/)\./.test(f.relPath || f.webkitRelativePath || f.name) && /^image\/|^application\/pdf$/.test(guessType(f)));
+  return { files: ok, skipped: all.length - ok.length };
+}
+
+// קבצים שנגררו, כולל תוכן של תיקיות (ותתי-תיקיות). לכל קובץ נשמר הנתיב היחסי ב-relPath
+async function filesFromDrop(dataTransfer) {
+  const entries = [...(dataTransfer.items || [])].map((it) => it.webkitGetAsEntry?.()).filter(Boolean);
+  if (!entries.length) return [...(dataTransfer.files || [])];
+  const out = [];
+  const walk = async (entry) => {
+    if (entry.isFile) {
+      const file = await new Promise((res, rej) => entry.file(res, rej));
+      file.relPath = entry.fullPath.replace(/^\//, "");
+      out.push(file);
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      // readEntries מחזיר את התוכן במנות; קוראים עד שמגיעה מנה ריקה
+      for (;;) {
+        const batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+        if (!batch.length) break;
+        for (const e of batch) await walk(e);
+      }
+    }
+  };
+  for (const e of entries) await walk(e);
+  return out;
+}
+
+const canPickFolders = "webkitdirectory" in document.createElement("input") && matchMedia("(pointer: fine)").matches;
+
+// מחבר כפתור תיקייה וגרירה למסך ייבוא. onFiles מקבל את הקבצים המתאימים בלבד
+function setupBulkSources(viewId, folderInputId, onFiles) {
+  const view = $(viewId);
+  view.querySelector(".folder-pick").hidden = !canPickFolders;
+  view.querySelector(".drop-hint").hidden = !canPickFolders;
+  const take = async (list) => {
+    const { files, skipped } = pickableFiles(list);
+    if (skipped) toast(`${skipped} קבצים דולגו (רק תמונות ו-PDF)`);
+    if (files.length) await onFiles(files);
+    else if (!skipped) toast("לא נמצאו קבצים");
+  };
+  $(folderInputId).addEventListener("change", async (e) => {
+    const list = [...e.target.files];
+    e.target.value = "";
+    await take(list);
+  });
+  let depth = 0;
+  view.addEventListener("dragenter", (e) => { if (e.dataTransfer?.types?.includes("Files")) { depth++; view.classList.add("drop-active"); } });
+  view.addEventListener("dragleave", () => { depth = Math.max(0, depth - 1); if (!depth) view.classList.remove("drop-active"); });
+  view.addEventListener("dragover", (e) => { if (e.dataTransfer?.types?.includes("Files")) e.preventDefault(); });
+  view.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    depth = 0;
+    view.classList.remove("drop-active");
+    await take(await filesFromDrop(e.dataTransfer));
+  });
 }
 
 async function toBase64(blob) {
@@ -1737,6 +1800,8 @@ $("bulk-retry-all").addEventListener("click", () => {
   rescanBulk(bulkItems.filter((b) => b.status === "error" && canRescan(b)));
 });
 
+setupBulkSources("view-bulk", "bulk-folder", addBulkFiles);
+
 $("bulk-pick").addEventListener("change", async (e) => {
   const files = [...e.target.files];
   e.target.value = "";
@@ -1966,7 +2031,7 @@ document.addEventListener("touchend", (e) => {
 const medical = initMedical({
   db, call, $, el, toast, busy, show, currentView, errMsg, norm,
   toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile,
-  MAX_TOTAL_BYTES, isAdmin: () => isAdmin, driveConnected: () => (driveCfg ? !!driveCfg.connected : true)
+  MAX_TOTAL_BYTES, setupBulkSources, isAdmin: () => isAdmin, driveConnected: () => (driveCfg ? !!driveCfg.connected : true)
 });
 
 /* ---------- routing ---------- */

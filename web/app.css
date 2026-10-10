@@ -476,3 +476,8 @@ html[data-vt="to-rec"]::view-transition-new(root) { animation-name: vt-in-right;
 .refresh-btn:active { background: var(--line-soft); }
 .refresh-btn.spinning svg { animation: spin .8s linear infinite; }
 .refresh-btn:disabled { cursor: default; }
+
+/* Bulk import: folder and drag & drop */
+.bulk-pick-row .pick-btn { height: 50px; }
+.drop-hint { margin: -6px 0 0; }
+.view.drop-active { outline: 3px dashed var(--accent); outline-offset: -10px; border-radius: 20px; background: var(--accent-tint); }

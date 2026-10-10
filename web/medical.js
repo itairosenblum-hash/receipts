@@ -60,7 +60,7 @@ export function initMedical(ctx) {
   const {
     db, call, $, el, toast, busy, show, currentView, errMsg, norm,
     toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile,
-    MAX_TOTAL_BYTES, isAdmin, driveConnected
+    MAX_TOTAL_BYTES, setupBulkSources, isAdmin, driveConnected
   } = ctx;
 
   let docs = [];
@@ -659,11 +659,17 @@ export function initMedical(ctx) {
   const isKnownHash = (hash, except) =>
     docs.some((d) => (d.fileHashes || []).includes(hash)) ||
     bulkItems.some((b) => b !== except && b.file?.hash === hash && b.status !== "removed");
-  const bulkMemberOf = (ai) => (ai?.memberId && members.some((m) => m.id === ai.memberId) ? ai.memberId : (bulkMember || ""));
+  // למי שייך מסמך בייבוא: תיקייה בשם של בן משפחה קובעת, אחריה מה ש-Gemini זיהה, ואחרונה בחירת ברירת המחדל
+  const bulkMemberOf = (ai, item) => item?.folderMember
+    || (ai?.memberId && members.some((m) => m.id === ai.memberId) ? ai.memberId : (bulkMember || ""));
+  function memberFromPath(path) {
+    const dirs = String(path || "").split("/").slice(0, -1).map(norm);
+    return members.find((m) => dirs.includes(norm(m.name)))?.id || "";
+  }
 
-  function docFromAi(ai) {
+  function docFromAi(ai, item) {
     return {
-      memberId: bulkMemberOf(ai),
+      memberId: bulkMemberOf(ai, item),
       docType: ai.docType || "other",
       specialty: ai.specialty || "",
       title: ai.title || DOC_TYPES[ai.docType] || "מסמך",
@@ -686,7 +692,8 @@ export function initMedical(ctx) {
 
   async function addBulkFiles(fileList) {
     const fresh = [...fileList].map((file) => ({
-      id: Math.random().toString(36).slice(2, 10), title: file.name, status: "preparing", source: file
+      id: Math.random().toString(36).slice(2, 10), title: file.name, status: "preparing", source: file,
+      folderMember: memberFromPath(file.relPath || file.webkitRelativePath)
     }));
     bulkItems.push(...fresh);
     renderBulk();
@@ -740,6 +747,7 @@ export function initMedical(ctx) {
   }
 
   $("med-bulk-retry-all").addEventListener("click", () => rescanBulk(bulkItems.filter((b) => b.status === "error" && canRescan(b))));
+  setupBulkSources("view-med-bulk", "med-bulk-folder", addBulkFiles);
   $("med-bulk-pick").addEventListener("change", async (e) => {
     const files = [...e.target.files];
     e.target.value = "";
@@ -755,7 +763,7 @@ export function initMedical(ctx) {
       item.status = "saving";
       renderBulk();
       try {
-        const res = await call("saveMedical")({ doc: docFromAi(item.ai), files: [await filePayload(item.file)] });
+        const res = await call("saveMedical")({ doc: docFromAi(item.ai, item), files: [await filePayload(item.file)] });
         item.status = "saved";
         item.savedId = res.data.id;
         item.title = item.ai.title || item.title;
@@ -787,7 +795,7 @@ export function initMedical(ctx) {
     $("med-bulk-list").replaceChildren(...items.map((b) => {
       const [cls, label, spin] = BULK_STATUS[b.status] || BULK_STATUS.error;
       const ai = b.ai;
-      const who = ai ? memberName(bulkMemberOf(ai)) : "";
+      const who = ai || b.folderMember ? memberName(bulkMemberOf(ai, b)) : "";
       const sub = ai ? [specName(ai.specialty) || DOC_TYPES[ai.docType], ai.provider, ai.date ? fmtDate(new Date(ai.date + "T12:00")) : ""].filter(Boolean).join(" · ") : "";
       const editable = ["ready", "review", "dup", "error"].includes(b.status) && b.file && !bulkSaving;
       const removable = !["scanning", "saving", "saved", "preparing"].includes(b.status) && !bulkSaving;
@@ -866,7 +874,8 @@ export function initMedical(ctx) {
     if (item.ai) {
       aiResult = item.ai;
       applyScan(item.ai, true);
-      if (!item.ai.memberId && bulkMember) { pickedMember = bulkMember; renderMemberPick(); }
+      const who = bulkMemberOf(item.ai, item);
+      if (who !== pickedMember && (item.folderMember || !item.ai.memberId)) { pickedMember = who; renderMemberPick(); }
       scanStatus("done", "הפרטים מולאו מהסריקה. בדקו אותם לפני השמירה.");
     } else {
       runScan(false);
