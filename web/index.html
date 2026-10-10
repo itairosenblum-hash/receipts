@@ -14,8 +14,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=20">
-<script type="module" src="app.js?v=26"></script>
+<link rel="stylesheet" href="app.css?v=21">
+<script type="module" src="app.js?v=27"></script>
 </head>
 <body>
 
@@ -63,7 +63,8 @@
       <a href="#/settings" class="avatar" id="avatar" aria-label="הגדרות"></a>
     </div>
   </header>
-  <nav class="tabs" aria-label="אזור">
+  <nav class="tabs" data-active="rec" aria-label="אזור">
+    <span class="tab-pill" aria-hidden="true"></span>
     <a href="#/" class="tab active" aria-current="page">קבלות</a>
     <a href="#/m" class="tab tab-med">רפואי</a>
   </nav>
@@ -245,10 +246,14 @@
   <header class="app-header">
     <h1>מסמכים רפואיים</h1>
     <div class="header-actions">
+      <a href="#/m/bulk" class="icon-btn" aria-label="ייבוא כמה מסמכים" title="ייבוא כמה מסמכים">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h11v15"/><path d="M5 6h11v15H5z"/><path d="M8 11h5M8 15h5"/></svg>
+      </a>
       <a href="#/settings" class="avatar" aria-label="הגדרות"></a>
     </div>
   </header>
-  <nav class="tabs" aria-label="אזור">
+  <nav class="tabs" data-active="med" aria-label="אזור">
+    <span class="tab-pill" aria-hidden="true"></span>
     <a href="#/" class="tab">קבלות</a>
     <a href="#/m" class="tab tab-med active" aria-current="page">רפואי</a>
   </nav>
@@ -281,6 +286,7 @@
     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M13 12v6M10 15h6"/></svg>
     <h2>עוד אין מסמכים רפואיים</h2>
     <p>לחצו על הפלוס כדי להוסיף את המסמך הראשון.</p>
+    <a href="#/m/bulk" class="btn-secondary" id="med-empty-bulk">ייבוא כמה מסמכים בבת אחת</a>
   </div>
   <a href="#/m/new" class="fab" aria-label="הוספת מסמך רפואי">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -329,6 +335,9 @@
     <label class="field">סוג מסמך
       <span class="cat-select"><span id="med-type-icon"></span><select name="docType" id="med-type-select"></select></span>
     </label>
+    <label class="field">תחום / סוג רופא
+      <span class="cat-select"><span id="med-spec-icon"></span><select name="specialty" id="med-spec-select"></select></span>
+    </label>
     <label class="field">תיאור
       <input name="title" maxlength="120" placeholder="למשל: ביקור אורתופד, ספירת דם">
     </label>
@@ -367,10 +376,13 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>
     </a>
   </header>
-  <div class="detail-head">
-    <div id="med-detail-type" class="eyebrow type-pill"></div>
-    <h1 id="med-detail-title"></h1>
-    <div id="med-detail-member" class="member-line"></div>
+  <div class="detail-head med-head">
+    <div id="med-detail-icon"></div>
+    <div class="med-head-text">
+      <div id="med-detail-type" class="eyebrow type-pill"></div>
+      <h1 id="med-detail-title"></h1>
+      <div id="med-detail-member" class="member-line"></div>
+    </div>
   </div>
   <dl id="med-detail-rows" class="card rows"></dl>
   <div class="card">
@@ -386,6 +398,32 @@
     <span id="med-btn-share-text">שליחת המסמך (למשל לרופא)</span>
   </button>
   <button id="med-btn-delete" class="btn-danger" type="button">מחיקת מסמך</button>
+</section>
+
+<!-- ייבוא מרובה של מסמכים רפואיים -->
+<section id="view-med-bulk" class="view view-app med" hidden>
+  <header class="app-header">
+    <h1>ייבוא מסמכים</h1>
+    <a href="#/m" class="icon-btn" aria-label="סגירה">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </a>
+  </header>
+  <p class="muted bulk-intro">בוחרים כמה קבצים בבת אחת. כל קובץ הוא מסמך נפרד: Gemini סורק אותו, ואתם בודקים ושומרים.</p>
+  <div class="field" id="med-bulk-member-field">
+    <span>מסמכים שלא זוהה של מי הם ישויכו ל:</span>
+    <div class="chip-row wrap" id="med-bulk-member"></div>
+  </div>
+  <label class="btn-secondary pick-btn">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/><path d="M12 11v6M9 14h6"/></svg>
+    בחירת קבצים
+    <input id="med-bulk-pick" type="file" accept="image/*,application/pdf" multiple class="sr-only">
+  </label>
+  <div id="med-bulk-summary" class="bulk-summary" hidden>
+    <span id="med-bulk-progress" class="grow"></span>
+    <button id="med-bulk-save-all" type="button" class="btn-primary">שמירת הכל</button>
+  </div>
+  <button id="med-bulk-retry-all" type="button" class="btn-secondary bulk-retry-all" hidden></button>
+  <ul id="med-bulk-list" class="bulk-list"></ul>
 </section>
 
 <!-- ייבוא מרובה -->

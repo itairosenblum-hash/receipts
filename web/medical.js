@@ -20,7 +20,7 @@ const DOC_TYPES = {
 };
 
 const TYPE_STYLE = {
-  visit: { fg: "#1F4E9C", bg: "#E2EAF7", icon: '<path d="M6 3v6a4 4 0 0 0 8 0V3"/><path d="M10 13v3a5 5 0 0 0 10 0v-2"/><circle cx="20" cy="12" r="2"/>' },
+  visit: { fg: "#1F4E9C", bg: "#E2EAF7", icon: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2.5h6V4"/><path d="M9 10h6M9 14h6M9 18h3"/>' },
   lab: { fg: "#7C2D92", bg: "#F2E5F6", icon: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>' },
   imaging: { fg: "#0E6378", bg: "#DDF0F4", icon: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 7v10M9 9h6M8.5 12h7M9 15h6"/>' },
   prescription: { fg: "#B4235A", bg: "#FBE3EC", icon: '<rect x="4" y="9" width="16" height="7" rx="3.5" transform="rotate(-45 12 12.5)"/><path d="M9.5 10l5 5"/>' },
@@ -32,6 +32,29 @@ const TYPE_STYLE = {
   other: { fg: "#57534E", bg: "#EEECE8", icon: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h4"/>' }
 };
 const typeStyle = (id) => TYPE_STYLE[id] || TYPE_STYLE.other;
+
+// תחום הרופא / המרפאה. חייב להיות זהה לרשימה ב-functions/medical.js
+const SPECIALTIES = {
+  family: { name: "רפואת משפחה", fg: "#1F4E9C", bg: "#E2EAF7", icon: '<path d="M6 3v6a4 4 0 0 0 8 0V3"/><path d="M10 13v3a5 5 0 0 0 10 0v-2"/><circle cx="20" cy="12" r="2"/>' },
+  pediatrics: { name: "רפואת ילדים", fg: "#C2410C", bg: "#FCE8DB", icon: '<circle cx="12" cy="13" r="7.5"/><path d="M12 5.5c0-1.5 1-2.5 2.5-2.5"/><path d="M9.5 11.5v.5M14.5 11.5v.5"/><path d="M9.5 15.5a3 3 0 0 0 5 0"/>' },
+  orthopedics: { name: "אורתופדיה", fg: "#57534E", bg: "#ECEAE5", icon: '<path d="M17 10c.7.5 1.6.5 2.3 0a2 2 0 1 0-2.4-3.2A2 2 0 1 0 13.7 4.4c-.5.7-.5 1.6 0 2.3l-7 7c-.7-.5-1.6-.5-2.3 0a2 2 0 1 0 2.4 3.2 2 2 0 1 0 3.2 2.4c.5-.7.5-1.6 0-2.3z"/>' },
+  ophthalmology: { name: "עיניים", fg: "#0E6378", bg: "#DDF0F4", icon: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>' },
+  ent: { name: "אף אוזן גרון", fg: "#9A3412", bg: "#FBE7DC", icon: '<path d="M6 9.5a6 6 0 1 1 12 0c0 3-2 4-3 5.5S14 18.5 13 20a3 3 0 0 1-5.5-1.5"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-1.5 2-1.5 3"/>' },
+  dermatology: { name: "עור", fg: "#A16207", bg: "#FAEFD9", icon: '<circle cx="10" cy="10" r="6.5"/><path d="M15 15l5.5 5.5"/><circle cx="8.5" cy="9" r=".8" fill="currentColor"/><circle cx="11.5" cy="11.5" r=".8" fill="currentColor"/><circle cx="11" cy="7.5" r=".6" fill="currentColor"/>' },
+  cardiology: { name: "לב", fg: "#B42318", bg: "#FBE4E1", icon: '<path d="M20.8 5.6a5 5 0 0 0-7.6.5L12 7.4l-1.2-1.3a5 5 0 0 0-7.6 6.5L12 21l8.8-8.4a5 5 0 0 0 0-7z"/><path d="M6 12.5h3l1.5-2 2 4 1.5-2h4"/>' },
+  gynecology: { name: "נשים", fg: "#BE185D", bg: "#FBE3EE", icon: '<circle cx="12" cy="9" r="5.5"/><path d="M12 14.5V21M9 18h6"/>' },
+  dental: { name: "שיניים", fg: "#0F6E6A", bg: "#DCEFEC", icon: '<path d="M7.5 3C5 3 3.5 5 3.5 7.5c0 3 1.5 4.5 2 7 .5 3 1 6.5 3 6.5s2-3 2.5-5.5c.2-1 .5-1.2 1-1.2s.8.2 1 1.2c.5 2.5.5 5.5 2.5 5.5s2.5-3.5 3-6.5c.5-2.5 2-4 2-7C20.5 5 19 3 16.5 3c-2 0-3 1-4.5 1s-2.5-1-4.5-1z"/>' },
+  neurology: { name: "נוירולוגיה", fg: "#6D28D9", bg: "#EEE7FB", icon: '<path d="M11 4.5A3 3 0 0 0 5.5 6 3 3 0 0 0 4 11a3 3 0 0 0 1.5 5A3 3 0 0 0 11 19.5z"/><path d="M13 4.5A3 3 0 0 1 18.5 6 3 3 0 0 1 20 11a3 3 0 0 1-1.5 5 3 3 0 0 1-5.5 3.5z"/><path d="M8 9.5h3M13 13.5h3"/>' },
+  gastro: { name: "גסטרו", fg: "#A15C07", bg: "#FBEEDB", icon: '<path d="M14 3v3a4 4 0 0 1-4 4H9a5 5 0 0 0-5 5v1a5 5 0 0 0 5 5h3a8 8 0 0 0 8-8v-1a4 4 0 0 0-4-4"/>' },
+  pulmonology: { name: "ריאות", fg: "#0369A1", bg: "#DFEFF9", icon: '<path d="M12 3v9M12 12l-2.5 2M12 12l2.5 2"/><path d="M8.5 7C6 7 3 11 3 16c0 2 1 4 3 4s3.5-1.5 3.5-4V8.5A1.5 1.5 0 0 0 8.5 7z"/><path d="M15.5 7C18 7 21 11 21 16c0 2-1 4-3 4s-3.5-1.5-3.5-4V8.5A1.5 1.5 0 0 1 15.5 7z"/>' },
+  urology: { name: "אורולוגיה", fg: "#7C2D12", bg: "#F6E6DC", icon: '<path d="M14.5 3.5c3.5 0 6 3 6 7.5s-2.5 9.5-7 9.5c-2.2 0-3.5-1.4-3.5-3.5 0-2.4 2-3.5 0-5s-5-1-5-4.5 4-4 9.5-4z"/>' },
+  endocrinology: { name: "אנדוקרינולוגיה וסוכרת", fg: "#1D4ED8", bg: "#E3EBFC", icon: '<path d="M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11z"/><path d="M10 15a2.5 2.5 0 0 0 2 2.5"/>' },
+  mental: { name: "בריאות הנפש", fg: "#5B4BB0", bg: "#E9E6F7", icon: '<path d="M6 21v-3.5A7.5 7.5 0 1 1 17 20v1"/><path d="M11.5 14l-2.3-2.2a1.5 1.5 0 0 1 2.3-1.9 1.5 1.5 0 0 1 2.3 1.9z"/>' },
+  physio: { name: "פיזיותרפיה", fg: "#15803D", bg: "#E0F3E5", icon: '<circle cx="14" cy="4.5" r="2"/><path d="M5 21l3.5-5.5 3 2 1.5-6.5 4 3.5h3"/><path d="M8 10.5l3.5-2.5 2.5 1"/>' },
+  allergy: { name: "אלרגיה", fg: "#A21CAF", bg: "#F7E3F8", icon: '<circle cx="12" cy="7" r="3"/><circle cx="12" cy="17" r="3"/><circle cx="7" cy="12" r="3"/><circle cx="17" cy="12" r="3"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/>' },
+  emergency: { name: "מיון ורפואה דחופה", fg: "#B91C1C", bg: "#FBE4E4", icon: '<path d="M7 18v-6a5 5 0 0 1 10 0v6"/><path d="M5 18h14v3H5z"/><path d="M12 2v2M4.3 5.3l1.4 1.4M19.7 5.3l-1.4 1.4M12 10v4M10 12h4"/>' }
+};
+const specName = (id) => SPECIALTIES[id]?.name || "";
 
 export function initMedical(ctx) {
   const {
@@ -47,6 +70,18 @@ export function initMedical(ctx) {
   let memberFilter = "";
 
   const memberName = (id) => members.find((m) => m.id === id)?.name || "";
+
+  // אייקון למסמך: לפי תחום הרופא אם ידוע, אחרת לפי סוג המסמך
+  function docBadge(d, cls = "cat-badge") {
+    return SPECIALTIES[d.specialty] ? specBadge(d.specialty, cls) : typeBadge(d.docType, cls);
+  }
+  function specBadge(id, cls = "cat-badge") {
+    const st = SPECIALTIES[id];
+    if (!st) return typeBadge("other", cls);
+    const span = el("span", { class: cls, "aria-hidden": "true", style: `background:${st.bg};color:${st.fg}` });
+    span.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${st.icon}</svg>`;
+    return span;
+  }
 
   function typeBadge(id, cls = "cat-badge") {
     const st = typeStyle(id);
@@ -74,6 +109,7 @@ export function initMedical(ctx) {
       renderList();
       renderMembersCard();
       if (currentView() === "med-edit") renderMemberPick();
+      if (currentView() === "med-bulk") { renderBulkMember(); renderBulk(); }
       if (currentView() === "med-detail" && detailId) openDetail(detailId);
     }, (e) => console.error(e)));
 
@@ -110,7 +146,7 @@ export function initMedical(ctx) {
       if (type && d.docType !== type) return false;
       if (year && String(docYear(d)) !== year) return false;
       if (!term) return true;
-      return [d.title, d.provider, DOC_TYPES[d.docType], memberName(d.memberId), d.notes, ...(d.tags || [])]
+      return [d.title, d.provider, DOC_TYPES[d.docType], specName(d.specialty), memberName(d.memberId), d.notes, ...(d.tags || [])]
         .filter(Boolean).some((s) => String(s).toLowerCase().includes(term));
     });
     const matchMember = (d, f) => !f || (f === "_none" ? !d.memberId || !memberName(d.memberId) : d.memberId === f);
@@ -131,15 +167,16 @@ export function initMedical(ctx) {
     $("med-drive-banner").hidden = driveConnected();
 
     $("med-list").replaceChildren(...list.map((d) => el("a", { class: "receipt", href: `#/m/d/${d.id}` },
-      typeBadge(d.docType),
+      docBadge(d),
       el("div", { class: "receipt-main" },
         el("div", { class: "receipt-title", text: d.title || DOC_TYPES[d.docType] || "מסמך" }),
-        el("div", { class: "receipt-sub", text: [DOC_TYPES[d.docType], d.provider].filter(Boolean).join(" · ") }),
+        el("div", { class: "receipt-sub", text: [specName(d.specialty) || DOC_TYPES[d.docType], d.provider].filter(Boolean).join(" · ") }),
         memberName(d.memberId) && el("div", { class: "tag-row" }, el("span", { class: "tag tag-member", text: memberName(d.memberId) }))
       ),
       el("div", { class: "receipt-date", text: fmtDate(toDate(d.date)) })
     )));
 
+    $("med-empty-bulk").hidden = docs.length > 0;
     const empty = $("med-empty");
     empty.hidden = !docsLoaded || list.length > 0;
     empty.querySelector("h2").textContent = docs.length ? "לא נמצאו מסמכים" : "עוד אין מסמכים רפואיים";
@@ -163,6 +200,12 @@ export function initMedical(ctx) {
   const CONFIDENCE_FIELDS = { docType: "docType", title: "title", provider: "provider", date: "date" };
 
   $("med-type-select").replaceChildren(...Object.entries(DOC_TYPES).map(([id, name]) => el("option", { value: id, text: name })));
+  $("med-spec-select").replaceChildren(el("option", { value: "", text: "לא ידוע / כללי" }),
+    ...Object.entries(SPECIALTIES).map(([id, sp]) => el("option", { value: id, text: sp.name })));
+  const syncSpecIcon = () => $("med-spec-icon").replaceChildren(SPECIALTIES[$("med-spec-select").value]
+    ? specBadge($("med-spec-select").value, "cat-badge small") : typeBadge($("med-type-select").value || "other", "cat-badge small"));
+  $("med-spec-select").addEventListener("change", () => { userEdited.add("specialty"); syncSpecIcon(); });
+  $("med-type-select").addEventListener("change", () => syncSpecIcon());
   const syncTypeIcon = () => $("med-type-icon").replaceChildren(typeBadge($("med-type-select").value || "other", "cat-badge small"));
   $("med-type-select").addEventListener("change", syncTypeIcon);
 
@@ -188,7 +231,8 @@ export function initMedical(ctx) {
       return;
     }
     editingId = id;
-    pendingFiles.forEach((f) => f.previewUrl && URL.revokeObjectURL(f.previewUrl));
+    bulkEditId = null;
+    pendingFiles.forEach((f) => !bulkItems.some((b) => b.file === f) && f.previewUrl && URL.revokeObjectURL(f.previewUrl));
     pendingFiles = [];
     form.reset();
     $("med-form-error").hidden = true;
@@ -206,6 +250,7 @@ export function initMedical(ctx) {
     if (d) {
       pickedMember = memberName(d.memberId) ? d.memberId : "";
       f.docType.value = d.docType || "other";
+      f.specialty.value = SPECIALTIES[d.specialty] ? d.specialty : "";
       f.title.value = d.title || "";
       f.provider.value = d.provider || "";
       f.date.value = isoDate(toDate(d.date) || new Date());
@@ -219,6 +264,7 @@ export function initMedical(ctx) {
     }
     renderMemberPick();
     syncTypeIcon();
+    syncSpecIcon();
     renderPendingFiles();
     show("med-edit");
   }
@@ -283,6 +329,7 @@ export function initMedical(ctx) {
       f[name].value = value;
     };
     set("docType", d.docType);
+    if (force || !userEdited.has("specialty")) f.specialty.value = SPECIALTIES[d.specialty] ? d.specialty : "";
     set("title", d.title);
     set("provider", d.provider);
     set("date", d.date);
@@ -292,6 +339,7 @@ export function initMedical(ctx) {
       renderMemberPick();
     }
     syncTypeIcon();
+    syncSpecIcon();
 
     form.querySelectorAll(".uncertain").forEach((n) => n.classList.remove("uncertain"));
     const conf = d.confidence || {};
@@ -378,6 +426,7 @@ export function initMedical(ctx) {
     const payload = {
       memberId: pickedMember,
       docType: f.docType.value || "other",
+      specialty: f.specialty.value || "",
       title: f.title.value.trim(),
       provider: f.provider.value.trim(),
       date: new Date(`${f.date.value}T12:00`).getTime(),
@@ -396,10 +445,22 @@ export function initMedical(ctx) {
         busy("מעלה לדרייב ושומר…");
         const files = await Promise.all(pendingFiles.map(filePayload));
         const res = await call("saveMedical")({ doc: payload, files });
-        pendingFiles.forEach((x) => x.previewUrl && URL.revokeObjectURL(x.previewUrl));
+        const fromBulk = bulkItems.find((b) => b.id === bulkEditId);
+        pendingFiles.forEach((x) => x !== fromBulk?.file && x.previewUrl && URL.revokeObjectURL(x.previewUrl));
         pendingFiles = [];
-        location.hash = `#/m/d/${res.data.id}`;
-        toast("המסמך נשמר");
+        if (fromBulk) {
+          fromBulk.status = "saved";
+          fromBulk.savedId = res.data.id;
+          fromBulk.title = payload.title;
+          bulkEditId = null;
+          if (!finishBulkIfDone(0)) {
+            location.hash = "#/m/bulk";
+            toast("המסמך נשמר");
+          }
+        } else {
+          location.hash = `#/m/d/${res.data.id}`;
+          toast("המסמך נשמר");
+        }
       }
     } catch (e) {
       err.textContent = errMsg(e);
@@ -444,9 +505,11 @@ export function initMedical(ctx) {
     typeEl.style.cssText = `background:${st.bg};color:${st.fg}`;
     $("med-detail-title").textContent = d.title || DOC_TYPES[d.docType] || "מסמך";
     $("med-detail-member").textContent = memberName(d.memberId) || "ללא שיוך לבן משפחה";
+    $("med-detail-icon").replaceChildren(docBadge(d, "cat-badge big"));
 
     const date = toDate(d.date);
     const rows = [
+      ["תחום", specName(d.specialty)],
       ["רופא / מוסד", d.provider],
       ["תאריך", date ? fmtDate(date) : ""],
       ["תגיות", (d.tags || []).join(", ")],
@@ -583,6 +646,240 @@ export function initMedical(ctx) {
     }
   });
 
+  /* ---------- bulk import ---------- */
+
+  let bulkItems = [];
+  let bulkEditId = null;
+  let bulkRunning = 0;
+  let bulkSaving = false;
+  let bulkMember = null; // null = עוד לא נבחר; "" = ללא שיוך
+  const BULK_CONCURRENCY = 2;
+
+  const bulkComplete = (ai) => !!(ai && ai.title && ai.date);
+  const isKnownHash = (hash, except) =>
+    docs.some((d) => (d.fileHashes || []).includes(hash)) ||
+    bulkItems.some((b) => b !== except && b.file?.hash === hash && b.status !== "removed");
+  const bulkMemberOf = (ai) => (ai?.memberId && members.some((m) => m.id === ai.memberId) ? ai.memberId : (bulkMember || ""));
+
+  function docFromAi(ai) {
+    return {
+      memberId: bulkMemberOf(ai),
+      docType: ai.docType || "other",
+      specialty: ai.specialty || "",
+      title: ai.title || DOC_TYPES[ai.docType] || "מסמך",
+      provider: ai.provider || "",
+      date: new Date(`${ai.date}T12:00`).getTime(),
+      tags: ai.tags || [],
+      notes: ""
+    };
+  }
+
+  function renderBulkMember() {
+    if (bulkMember === null) bulkMember = memberFilter && memberFilter !== "_none" ? memberFilter : "";
+    const opts = [["", "ללא שיוך"], ...members.map((m) => [m.id, m.name])];
+    $("med-bulk-member-field").hidden = !members.length;
+    $("med-bulk-member").replaceChildren(...opts.map(([id, label]) => el("button", {
+      type: "button", class: "filter-chip" + (id === bulkMember ? " active" : ""), "aria-pressed": String(id === bulkMember),
+      onclick: () => { bulkMember = id; renderBulkMember(); renderBulk(); }
+    }, label)));
+  }
+
+  async function addBulkFiles(fileList) {
+    const fresh = [...fileList].map((file) => ({
+      id: Math.random().toString(36).slice(2, 10), title: file.name, status: "preparing", source: file
+    }));
+    bulkItems.push(...fresh);
+    renderBulk();
+    for (const item of fresh) {
+      try {
+        item.file = await prepareFile(item.source, "document");
+        delete item.source;
+        if (item.file.size > MAX_TOTAL_BYTES) { item.status = "error"; item.error = "הקובץ גדול מ-7MB"; }
+        else if (isKnownHash(item.file.hash, item)) item.status = "dup";
+        else item.status = "queued";
+      } catch (e) {
+        item.status = "error";
+        item.error = e.message;
+      }
+      renderBulk();
+      pumpBulk();
+    }
+  }
+
+  function pumpBulk() {
+    while (bulkRunning < BULK_CONCURRENCY) {
+      const next = bulkItems.find((b) => b.status === "queued");
+      if (!next) break;
+      bulkRunning++;
+      scanBulkItem(next).finally(() => { bulkRunning--; renderBulk(); pumpBulk(); });
+    }
+  }
+
+  async function scanBulkItem(item) {
+    item.status = "scanning";
+    renderBulk();
+    try {
+      const res = await call("scanMedical", 200000)({ files: [await filePayload(item.file)] });
+      item.ai = res.data;
+      item.status = bulkComplete(res.data) ? "ready" : "review";
+      item.scanFailed = false;
+      delete item.error;
+    } catch (e) {
+      item.status = "error";
+      item.scanFailed = true;
+      item.error = errMsg(e);
+    }
+  }
+
+  const canRescan = (b) => !!b.file && !bulkSaving && b.file.size <= MAX_TOTAL_BYTES &&
+    (b.status === "review" || (b.status === "error" && b.scanFailed));
+  function rescanBulk(list) {
+    list.forEach((b) => { b.status = "queued"; delete b.error; });
+    renderBulk();
+    pumpBulk();
+  }
+
+  $("med-bulk-retry-all").addEventListener("click", () => rescanBulk(bulkItems.filter((b) => b.status === "error" && canRescan(b))));
+  $("med-bulk-pick").addEventListener("change", async (e) => {
+    const files = [...e.target.files];
+    e.target.value = "";
+    if (files.length) await addBulkFiles(files);
+  });
+
+  $("med-bulk-save-all").addEventListener("click", async () => {
+    const ready = bulkItems.filter((b) => b.status === "ready");
+    if (!ready.length || bulkSaving) return;
+    bulkSaving = true;
+    renderBulk();
+    for (const item of ready) {
+      item.status = "saving";
+      renderBulk();
+      try {
+        const res = await call("saveMedical")({ doc: docFromAi(item.ai), files: [await filePayload(item.file)] });
+        item.status = "saved";
+        item.savedId = res.data.id;
+        item.title = item.ai.title || item.title;
+      } catch (e) {
+        item.status = "error";
+        item.error = "השמירה נכשלה: " + errMsg(e);
+      }
+      renderBulk();
+    }
+    bulkSaving = false;
+    renderBulk();
+    finishBulkIfDone(ready.filter((b) => b.status === "saved").length);
+  });
+
+  const BULK_STATUS = {
+    preparing: ["chip-busy", "מכין…", true],
+    queued: ["chip-busy", "ממתין לסריקה", false],
+    scanning: ["chip-busy", "סורק…", true],
+    ready: ["chip-ready", "מוכן לשמירה", false],
+    review: ["chip-review", "חסרים פרטים, צריך לבדוק", false],
+    dup: ["chip-dup", "הקובץ כבר הועלה, לא יישמר", false],
+    error: ["chip-error", "נכשל", false],
+    saving: ["chip-busy", "שומר…", true],
+    saved: ["chip-saved", "נשמר", false]
+  };
+
+  function renderBulk() {
+    const items = bulkItems.filter((b) => b.status !== "removed");
+    $("med-bulk-list").replaceChildren(...items.map((b) => {
+      const [cls, label, spin] = BULK_STATUS[b.status] || BULK_STATUS.error;
+      const ai = b.ai;
+      const who = ai ? memberName(bulkMemberOf(ai)) : "";
+      const sub = ai ? [specName(ai.specialty) || DOC_TYPES[ai.docType], ai.provider, ai.date ? fmtDate(new Date(ai.date + "T12:00")) : ""].filter(Boolean).join(" · ") : "";
+      const editable = ["ready", "review", "dup", "error"].includes(b.status) && b.file && !bulkSaving;
+      const removable = !["scanning", "saving", "saved", "preparing"].includes(b.status) && !bulkSaving;
+      return el("li", { class: "bulk-item" + (b.status === "saved" ? " saved" : "") },
+        ai ? docBadge(ai) : thumb(b.file?.mimeType || "", b.file?.previewUrl),
+        el("div", { class: "bulk-main" },
+          el("div", { class: "bulk-title", text: (b.status === "saved" ? b.title : ai?.title) || b.title }),
+          (sub || who) && el("div", { class: "bulk-sub" }, sub, who && el("span", { class: "tag tag-member", text: who })),
+          el("span", { class: "chip " + cls }, spin && el("span", { class: "spinner small" }), label),
+          b.error && el("div", { class: "error small", text: b.error }),
+          el("div", { class: "bulk-actions" },
+            canRescan(b) && el("button", { type: "button", class: "link-btn", text: "סריקה חוזרת", onclick: () => rescanBulk([b]) }),
+            b.status === "error" && !b.scanFailed && b.ai && !bulkSaving && el("button", {
+              type: "button", class: "link-btn", text: "ניסיון חוזר",
+              onclick: () => { b.status = bulkComplete(b.ai) ? "ready" : "review"; delete b.error; renderBulk(); }
+            }),
+            editable && el("a", { class: "link-btn", href: `#/m/bulk/edit/${b.id}`, text: b.status === "dup" ? "שמירה בכל זאת" : "בדיקה ועריכה" }),
+            b.status === "saved" && b.savedId && el("a", { class: "link-btn", href: `#/m/d/${b.savedId}`, text: "פתיחה" }),
+            removable && el("button", {
+              type: "button", class: "link-btn danger", text: "הסרה",
+              onclick: () => {
+                if (b.file?.previewUrl) URL.revokeObjectURL(b.file.previewUrl);
+                b.status = "removed";
+                renderBulk();
+              }
+            })
+          )
+        )
+      );
+    }));
+
+    const count = (st) => items.filter((b) => b.status === st).length;
+    const ready = count("ready");
+    const pending = items.filter((b) => ["preparing", "queued", "scanning"].includes(b.status)).length;
+    $("med-bulk-summary").hidden = !items.length;
+    $("med-bulk-progress").textContent = [
+      pending ? `סורק ${items.length - pending} מתוך ${items.length}` : `${items.length} קבצים`,
+      ready ? `${ready} מוכנים` : "",
+      count("saved") ? `${count("saved")} נשמרו` : ""
+    ].filter(Boolean).join(" · ");
+    const failed = items.filter((b) => b.status === "error" && canRescan(b)).length;
+    $("med-bulk-retry-all").hidden = failed < 2;
+    $("med-bulk-retry-all").textContent = `סריקה חוזרת ל-${failed} הקבצים שנכשלו`;
+    const btn = $("med-bulk-save-all");
+    btn.disabled = !ready || bulkSaving;
+    btn.textContent = bulkSaving ? "שומר…" : ready === 1 ? "שמירת מסמך אחד" : ready ? `שמירת ${ready} מסמכים` : "שמירת הכל";
+  }
+
+  function finishBulkIfDone(savedNow) {
+    const active = bulkItems.filter((b) => b.status !== "removed");
+    const pending = active.filter((b) => b.status !== "saved");
+    if (active.length && !pending.length) {
+      active.forEach((b) => b.file?.previewUrl && URL.revokeObjectURL(b.file.previewUrl));
+      bulkItems = [];
+      bulkMember = null;
+      location.hash = "#/m";
+      toast(active.length === 1 ? "המסמך נשמר" : `כל ${active.length} המסמכים נשמרו`);
+      return true;
+    }
+    if (savedNow) {
+      toast(`${savedNow === 1 ? "מסמך אחד נשמר" : savedNow + " מסמכים נשמרו"} · ${pending.length === 1 ? "אחד נשאר" : pending.length + " נשארו"} לבדיקה`);
+    }
+    return false;
+  }
+
+  function openBulkEdit(id) {
+    const item = bulkItems.find((b) => b.id === id && b.status !== "removed");
+    if (!item || !item.file) { location.hash = "#/m/bulk"; return; }
+    openEdit(null);
+    bulkEditId = id;
+    $("med-edit-title").textContent = "בדיקת מסמך";
+    $("med-edit-close").href = "#/m/bulk";
+    $("med-btn-cancel").href = "#/m/bulk";
+    pendingFiles = [item.file];
+    renderPendingFiles();
+    if (item.ai) {
+      aiResult = item.ai;
+      applyScan(item.ai, true);
+      if (!item.ai.memberId && bulkMember) { pickedMember = bulkMember; renderMemberPick(); }
+      scanStatus("done", "הפרטים מולאו מהסריקה. בדקו אותם לפני השמירה.");
+    } else {
+      runScan(false);
+    }
+  }
+
+  window.addEventListener("beforeunload", (e) => {
+    if (bulkItems.some((b) => ["preparing", "queued", "scanning", "ready", "review", "saving"].includes(b.status))) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
+
   /* ---------- family members (settings) ---------- */
 
   function renderMembersCard() {
@@ -650,8 +947,19 @@ export function initMedical(ctx) {
   /* ---------- routing ---------- */
 
   function route(hash) {
+    if (hash === "#/m/bulk") {
+      renderBulkMember();
+      renderBulk();
+      show("med-bulk");
+      return;
+    }
+    const bm = /^#\/m\/bulk\/edit\/([^/]+)$/.exec(hash);
+    if (bm) {
+      if (currentView() !== "med-edit" || bulkEditId !== bm[1]) openBulkEdit(bm[1]);
+      return;
+    }
     if (hash === "#/m/new") {
-      if (currentView() !== "med-edit" || editingId) openEdit(null);
+      if (currentView() !== "med-edit" || editingId || bulkEditId) openEdit(null);
       return;
     }
     let m = /^#\/m\/d\/([^/]+)\/edit$/.exec(hash);
