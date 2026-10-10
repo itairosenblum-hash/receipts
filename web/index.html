@@ -27,8 +27,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&family=Suez+One&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=35">
-<script type="module" src="app.js?v=36"></script>
+<link rel="stylesheet" href="app.css?v=36">
+<script type="module" src="app.js?v=37"></script>
 </head>
 <body>
 
@@ -586,6 +586,12 @@
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
     <span id="viewer-title" class="viewer-title"></span>
+    <button id="viewer-zoom-out" class="icon-btn light" type="button" aria-label="הקטנה">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M8 11h6"/></svg>
+    </button>
+    <button id="viewer-zoom-in" class="icon-btn light" type="button" aria-label="הגדלה">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M8 11h6M11 8v6"/></svg>
+    </button>
     <a id="viewer-drive" class="viewer-action" href="#" target="_blank" rel="noopener" hidden>דרייב</a>
     <a id="viewer-download" class="viewer-action" href="#" download>הורדה</a>
   </div>

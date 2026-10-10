@@ -701,3 +701,14 @@ html[data-area="med"] { --sh: 28, 61, 120; }
 .snippet mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent-ink); border-radius: 3px; padding: 0 2px; font-weight: 700; }
 .strong-soft { margin: 0; font-weight: 600; font-size: 15px; }
 #btn-index-all.waiting { opacity: .7; }
+
+/* חלון הצפייה: הגדלה פנימית. הדף עצמו לא מוגדל (touch-action), והתוכן נגלל בתוך החלון */
+.viewer { touch-action: pan-x pan-y; overscroll-behavior: contain; }
+.viewer-body { display: flex; align-items: flex-start; justify-content: flex-start; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.viewer-body:not(.pdf) .zoom-stage { margin: auto; }
+.zoom-stage { flex: none; }
+.zoom-stage img { display: block; width: 100%; height: auto; max-width: none; max-height: none; }
+.viewer-body.pdf { padding: 0; }
+.viewer-body.pdf .zoom-stage { display: flex; flex-direction: column; gap: 8px; padding: 8px; box-sizing: border-box; margin: 0 auto; }
+.viewer-body.zoomed { cursor: grab; }
+.viewer-body { direction: ltr; } /* גלילה רגילה משמאל לימין, כדי שחישוב ההגדלה יהיה פשוט */

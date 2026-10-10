@@ -1489,17 +1489,23 @@ async function displayFile(f, data) {
   const drive = $("viewer-drive");
   drive.hidden = !(isAdmin && f.webViewLink);
   if (f.webViewLink) drive.href = f.webViewLink;
+  lockPageZoom(true);
   $("viewer").hidden = false;
   $("viewer").dataset.url = url;
+  const stage = el("div", { class: "zoom-stage" });
+  body.append(stage);
+  zoom.reset(stage, isPdf);
   if (isPdf) {
     try {
-      await renderPdf(bytes.slice(), body);
+      await renderPdf(bytes.slice(), stage);
     } catch (e) {
       console.error(e);
       body.replaceChildren(el("p", { class: "viewer-msg", text: "לא ניתן להציג את הקובץ כאן. אפשר להוריד אותו או לפתוח בדרייב." }));
     }
   } else {
-    body.append(el("img", { src: url, alt: f.name }));
+    const img = el("img", { src: url, alt: f.name });
+    img.addEventListener("load", () => zoom.apply());
+    stage.append(img);
   }
 }
 
@@ -1508,7 +1514,102 @@ $("viewer-close").addEventListener("click", () => {
   v.hidden = true;
   $("viewer-body").replaceChildren();
   if (v.dataset.url) URL.revokeObjectURL(v.dataset.url);
+  lockPageZoom(false);
 });
+
+/* ---------- zoom inside the viewer (not the whole page) ---------- */
+// ההגדלה של מסמך נעשית בתוך חלון הצפייה: צביטה, הקשה כפולה או Ctrl+גלגלת. הדף עצמו לא מוגדל,
+// וכשסוגרים את החלון הוא חוזר לגודל הרגיל גם אם הוגדל קודם.
+const viewportMeta = document.querySelector('meta[name="viewport"]');
+const VIEWPORT_DEFAULT = viewportMeta.content;
+function lockPageZoom(lock) {
+  if (lock) {
+    viewportMeta.content = VIEWPORT_DEFAULT + ", maximum-scale=1, user-scalable=no";
+  } else {
+    // מעבר רגעי ל-maximum-scale=1 מאפס הגדלה שנשארה בדף, ואז חוזרים לברירת המחדל (כדי לא לחסום הגדלה לנגישות)
+    viewportMeta.content = VIEWPORT_DEFAULT + ", maximum-scale=1";
+    setTimeout(() => { viewportMeta.content = VIEWPORT_DEFAULT; }, 350);
+  }
+}
+
+const zoom = (() => {
+  const body = $("viewer-body");
+  let stage = null, pdf = false, scale = 1, pinch = null, lastTap = 0;
+  const MAX = 5;
+
+  // רוחב התוכן בהגדלה 1: תמונה בגודל שנכנס בחלון, PDF ברוחב החלון
+  function baseWidth() {
+    const cw = body.clientWidth, ch = body.clientHeight;
+    if (pdf) return cw;
+    const img = stage?.querySelector("img");
+    if (!img?.naturalWidth) return cw;
+    return Math.min(cw, ch * (img.naturalWidth / img.naturalHeight));
+  }
+
+  function apply() {
+    if (!stage) return;
+    const w = baseWidth() * scale;
+    stage.style.width = w + "px";
+    body.classList.toggle("zoomed", scale > 1.01);
+  }
+
+  // משנה את ההגדלה סביב נקודה (x, y) בחלון, כך שהנקודה שמתחת לאצבעות נשארת במקומה
+  function zoomAt(newScale, x, y) {
+    newScale = Math.min(MAX, Math.max(1, newScale));
+    const rect = body.getBoundingClientRect();
+    const ox = x - rect.left, oy = y - rect.top;
+    const fx = (body.scrollLeft + ox) / Math.max(1, stage.offsetWidth);
+    const fy = (body.scrollTop + oy) / Math.max(1, stage.offsetHeight);
+    scale = newScale;
+    apply();
+    body.scrollLeft = fx * stage.offsetWidth - ox;
+    body.scrollTop = fy * stage.offsetHeight - oy;
+  }
+
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const mid = (t) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+
+  body.addEventListener("touchstart", (e) => {
+    if (!stage) return;
+    if (e.touches.length === 2) {
+      pinch = { d: dist(e.touches), s: scale };
+      e.preventDefault();
+    } else if (e.touches.length === 1) {
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        const t = e.touches[0];
+        zoomAt(scale > 1.01 ? 1 : 2.5, t.clientX, t.clientY);
+        e.preventDefault();
+        lastTap = 0;
+      } else {
+        lastTap = now;
+      }
+    }
+  }, { passive: false });
+  body.addEventListener("touchmove", (e) => {
+    if (pinch && e.touches.length === 2) {
+      const m = mid(e.touches);
+      zoomAt(pinch.s * (dist(e.touches) / pinch.d), m.x, m.y);
+      e.preventDefault();
+    }
+  }, { passive: false });
+  body.addEventListener("touchend", (e) => { if (e.touches.length < 2) pinch = null; });
+  body.addEventListener("dblclick", (e) => zoomAt(scale > 1.01 ? 1 : 2.5, e.clientX, e.clientY));
+  body.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey || !stage) return;
+    e.preventDefault();
+    zoomAt(scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX, e.clientY);
+  }, { passive: false });
+  window.addEventListener("resize", () => { if (!$("viewer").hidden) apply(); });
+
+  return {
+    reset(s, isPdf) { stage = s; pdf = isPdf; scale = 1; body.scrollTop = body.scrollLeft = 0; apply(); },
+    apply,
+    by(f) { const r = body.getBoundingClientRect(); zoomAt(scale * f, r.left + r.width / 2, r.top + r.height / 2); }
+  };
+})();
+$("viewer-zoom-in").addEventListener("click", () => zoom.by(1.5));
+$("viewer-zoom-out").addEventListener("click", () => zoom.by(1 / 1.5));
 
 async function removeFile(receiptId, f) {
   if (!confirm(`למחוק את הקובץ "${f.name}"? הוא יועבר לאשפה בדרייב.`)) return;
