@@ -1316,7 +1316,7 @@ function whatsappReceiptText(r) {
   return `*${title}*\n${receiptSummary(r)}\n\nהקבלה באפליקציה: ${SHARE_URL}#/r/${r.id}`;
 }
 
-$("btn-share-app").href = whatsappHref(`קבלות ואחריות: כל הקבלות והאחריות של הבית במקום אחד\n${SHARE_URL}`);
+$("btn-share-app").href = whatsappHref(`הכספת: הקבלות, האחריות והמסמכים הרפואיים של הבית במקום אחד\n${SHARE_URL}`);
 
 async function doShare(p) {
   try {
@@ -1472,7 +1472,7 @@ async function listenForeground() {
     try {
       if (Notification.permission !== "granted") throw new Error("no permission");
       const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification(n.title || "קבלות ואחריות", {
+      await reg.showNotification(n.title || "הכספת", {
         body: n.body || "", icon: "icon-192.png", badge: "icon-192.png", dir: "rtl", lang: "he", data: { link }
       });
     } catch {
