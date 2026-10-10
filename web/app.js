@@ -418,7 +418,7 @@ onAuthStateChanged(auth, async (user) => {
 
 /* ---------- app start ---------- */
 
-function startApp() {
+function startApp({ keepView = false } = {}) {
   renderAvatar();
   $("settings-email").textContent = currentUser.email;
 
@@ -427,6 +427,7 @@ function startApp() {
     receipts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     receiptsLoaded = true;
     renderReceipts();
+    if (!snap.metadata?.fromCache) { onFreshData?.(); onFreshData = null; }
     if (currentView() === "detail" || currentView() === "loading") route();
   }, (e) => toast(errMsg(e))));
 
@@ -451,7 +452,7 @@ function startApp() {
     $("access-error").hidden = false;
   }));
 
-  route();
+  if (!keepView) route();
 }
 
 async function seedCategories() {
@@ -1886,6 +1887,55 @@ window.addEventListener("beforeunload", (e) => {
     e.preventDefault();
     e.returnValue = "";
   }
+});
+
+/* ---------- refresh ---------- */
+// הנתונים מתעדכנים בזמן אמת, אבל אחרי שהטלפון ישן החיבור יכול להיתקע. הכפתור מחבר מחדש את כל ההאזנות,
+// ואם יצאה גרסה חדשה של האפליקציה, טוען אותה.
+let onFreshData = null;
+let refreshing = false;
+
+async function newVersionAvailable() {
+  try {
+    const html = await (await fetch("index.html?t=" + Date.now(), { cache: "no-store" })).text();
+    const latest = /app\.js\?v=(\d+)/.exec(html)?.[1];
+    const current = /app\.js\?v=(\d+)/.exec(document.querySelector('script[src*="app.js"]')?.getAttribute("src") || "")?.[1];
+    return !!(latest && current && latest !== current);
+  } catch {
+    return false;
+  }
+}
+
+async function refreshData(manual) {
+  if (!allowed || refreshing) return;
+  refreshing = true;
+  const btns = document.querySelectorAll(".refresh-btn");
+  btns.forEach((b) => { b.classList.add("spinning"); b.disabled = true; });
+  try {
+    if (manual && await newVersionAvailable()) {
+      toast("יש גרסה חדשה, טוען…");
+      setTimeout(() => location.reload(), 600);
+      return;
+    }
+    const y = window.scrollY;
+    const fresh = new Promise((resolve) => { onFreshData = resolve; setTimeout(resolve, 8000); });
+    stopListeners();
+    startApp({ keepView: true });
+    await fresh;
+    window.scrollTo(0, y);
+    if (manual) toast("הנתונים עודכנו");
+  } finally {
+    refreshing = false;
+    btns.forEach((b) => { b.classList.remove("spinning"); b.disabled = false; });
+  }
+}
+document.querySelectorAll(".refresh-btn").forEach((b) => b.addEventListener("click", () => refreshData(true)));
+
+// חזרה לאפליקציה אחרי יותר מדקה ברקע: מחברים מחדש אוטומטית
+let hiddenAt = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (hiddenAt && Date.now() - hiddenAt > 60000) refreshData(false);
 });
 
 /* ---------- swipe between the receipts and medical tabs ---------- */
