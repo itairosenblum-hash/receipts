@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0F6E6A">
+<meta name="theme-color" content="#0E4D47">
 <title>הכספת</title>
 <link rel="manifest" href="manifest.webmanifest?v=6">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -13,9 +13,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=24">
-<script type="module" src="app.js?v=31"></script>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&family=Suez+One&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css?v=27">
+<script type="module" src="app.js?v=32"></script>
 </head>
 <body>
 
@@ -27,9 +27,7 @@
 <!-- כניסה -->
 <section id="view-login" class="view view-login" hidden>
   <div class="login-hero">
-    <div class="app-mark" aria-hidden="true">
-      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9.5 11.5l1.8 1.8 3.5-3.6"/></svg>
-    </div>
+    <div class="dial dial-login" aria-hidden="true"></div>
     <h1>הכספת</h1>
     <p>המסמכים החשובים של הבית במקום אחד: קבלות עם תזכורת לפני שהאחריות נגמרת, ומסמכים רפואיים לכל המשפחה.</p>
   </div>
@@ -54,23 +52,27 @@
 
 <!-- רשימת קבלות -->
 <section id="view-list" class="view view-app" hidden>
-  <header class="app-header">
-    <h1>הקבלות שלנו</h1>
-    <div class="header-actions">
-      <a href="#/bulk" class="icon-btn" aria-label="ייבוא כמה קבלות" title="ייבוא כמה קבלות">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h11v15"/><path d="M5 6h11v15H5z"/><path d="M8 11h5M8 15h5"/></svg>
-      </a>
-      <button type="button" class="icon-btn refresh-btn" aria-label="רענון נתונים" title="רענון נתונים">
-        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>
-      </button>
-      <a href="#/settings" class="avatar" id="avatar" aria-label="הגדרות"></a>
-    </div>
-  </header>
-  <nav class="tabs" data-active="rec" aria-label="אזור">
-    <span class="tab-pill" aria-hidden="true"></span>
-    <a href="#/" class="tab active" aria-current="page">קבלות</a>
-    <a href="#/m" class="tab tab-med">רפואי</a>
-  </nav>
+  <div class="hero">
+    <div class="dial" aria-hidden="true"></div>
+    <header class="app-header">
+      <h1>הקבלות שלנו</h1>
+      <div class="header-actions">
+        <a href="#/bulk" class="icon-btn" aria-label="ייבוא כמה קבלות" title="ייבוא כמה קבלות">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h11v15"/><path d="M5 6h11v15H5z"/><path d="M8 11h5M8 15h5"/></svg>
+        </a>
+        <button type="button" class="icon-btn refresh-btn" aria-label="רענון נתונים" title="רענון נתונים">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>
+        </button>
+        <a href="#/settings" class="avatar" id="avatar" aria-label="הגדרות"></a>
+      </div>
+    </header>
+    <p class="hero-summary" id="rec-summary"></p>
+    <nav class="tabs" data-active="rec" aria-label="אזור">
+      <span class="tab-pill" aria-hidden="true"></span>
+      <a href="#/" class="tab active" aria-current="page">קבלות</a>
+      <a href="#/m" class="tab tab-med">רפואי</a>
+    </nav>
+  </div>
   <label class="search">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
     <span class="sr-only">חיפוש</span>
@@ -246,23 +248,27 @@
 
 <!-- רשימת מסמכים רפואיים -->
 <section id="view-medical" class="view view-app med" hidden>
-  <header class="app-header">
-    <h1>מסמכים רפואיים</h1>
-    <div class="header-actions">
-      <a href="#/m/bulk" class="icon-btn" aria-label="ייבוא כמה מסמכים" title="ייבוא כמה מסמכים">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h11v15"/><path d="M5 6h11v15H5z"/><path d="M8 11h5M8 15h5"/></svg>
-      </a>
-      <button type="button" class="icon-btn refresh-btn" aria-label="רענון נתונים" title="רענון נתונים">
-        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>
-      </button>
-      <a href="#/settings" class="avatar" aria-label="הגדרות"></a>
-    </div>
-  </header>
-  <nav class="tabs" data-active="med" aria-label="אזור">
-    <span class="tab-pill" aria-hidden="true"></span>
-    <a href="#/" class="tab">קבלות</a>
-    <a href="#/m" class="tab tab-med active" aria-current="page">רפואי</a>
-  </nav>
+  <div class="hero">
+    <div class="dial" aria-hidden="true"></div>
+    <header class="app-header">
+      <h1>התיק הרפואי</h1>
+      <div class="header-actions">
+        <a href="#/m/bulk" class="icon-btn" aria-label="ייבוא כמה מסמכים" title="ייבוא כמה מסמכים">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h11v15"/><path d="M5 6h11v15H5z"/><path d="M8 11h5M8 15h5"/></svg>
+        </a>
+        <button type="button" class="icon-btn refresh-btn" aria-label="רענון נתונים" title="רענון נתונים">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>
+        </button>
+        <a href="#/settings" class="avatar" aria-label="הגדרות"></a>
+      </div>
+    </header>
+    <p class="hero-summary" id="med-summary"></p>
+    <nav class="tabs" data-active="med" aria-label="אזור">
+      <span class="tab-pill" aria-hidden="true"></span>
+      <a href="#/" class="tab">קבלות</a>
+      <a href="#/m" class="tab tab-med active" aria-current="page">רפואי</a>
+    </nav>
+  </div>
   <label class="search">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
     <span class="sr-only">חיפוש</span>

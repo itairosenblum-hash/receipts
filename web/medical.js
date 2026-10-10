@@ -163,6 +163,9 @@ export function initMedical(ctx) {
       }, label, id && el("span", { class: "count", text: String(n) }));
     }));
     $("med-filters").hidden = docs.length === 0;
+    const people = new Set(docs.map((d) => d.memberId).filter((id) => memberName(id))).size;
+    $("med-summary").textContent = !docsLoaded ? "" : !docs.length ? "עוד אין מסמכים"
+      : (docs.length === 1 ? "מסמך אחד" : `${docs.length} מסמכים`) + (people > 1 ? ` של ${people} בני משפחה` : people === 1 ? ` של ${memberName(docs.find((d) => memberName(d.memberId))?.memberId)}` : "");
     $("med-members-banner").hidden = members.length > 0;
     $("med-drive-banner").hidden = driveConnected();
 

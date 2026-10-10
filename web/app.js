@@ -10,7 +10,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
-import { initMedical } from "./medical.js?v=3";
+import { initMedical } from "./medical.js?v=4";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -56,12 +56,17 @@ let unsubs = [];
 const MED_VIEWS = new Set(["medical", "med-edit", "med-detail", "med-bulk"]);
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
+// צבע שורת המערכת: כהה מעל רצועת הכותרת של הרשימות, בהיר במסכים האחרים
+const THEME_COLORS = { list: "#0E4D47", medical: "#1C3D78", login: "#0E4D47" };
+
 function show(view) {
   const from = VIEWS.find((v) => !$("view-" + v).hidden);
   const apply = () => {
     for (const v of VIEWS) $("view-" + v).hidden = v !== view;
     window.scrollTo(0, 0);
-    document.querySelector('meta[name="theme-color"]').content = MED_VIEWS.has(view) ? "#2F5DA8" : "#0F6E6A";
+    const med = MED_VIEWS.has(view);
+    document.documentElement.dataset.area = med ? "med" : "rec";
+    document.querySelector('meta[name="theme-color"]').content = THEME_COLORS[view] || (med ? "#ECF0F7" : "#EBF2EF");
   };
   // מעבר מונפש בין הטאבים: הרשימה מחליקה הצידה והסמן של הטאב נוסע למקומו החדש
   const dir = from === "list" && view === "medical" ? "to-med" : from === "medical" && view === "list" ? "to-rec" : null;
@@ -73,6 +78,29 @@ function show(view) {
     apply();
   }
 }
+/* ---------- vault dial (decoration in the list headers and the login screen) ---------- */
+
+// חוגה של כספת: טבעת עם שנתות, טבעת פנימית וכפתור עם חריצי אחיזה. מצוירת פעם אחת לכל מקום שצריך
+function makeDial() {
+  const ticks = [];
+  for (let i = 0; i < 60; i++) {
+    const a = (i * 6 * Math.PI) / 180, long = i % 5 === 0;
+    const r1 = long ? 118 : 128, r2 = 140;
+    ticks.push(`<line x1="${(Math.sin(a) * r1).toFixed(1)}" y1="${(-Math.cos(a) * r1).toFixed(1)}" x2="${(Math.sin(a) * r2).toFixed(1)}" y2="${(-Math.cos(a) * r2).toFixed(1)}" stroke-width="${long ? 3 : 1.5}"/>`);
+  }
+  const grips = [];
+  for (let i = 0; i < 24; i++) {
+    const a = (i * 15 * Math.PI) / 180;
+    grips.push(`<line x1="${(Math.sin(a) * 58).toFixed(1)}" y1="${(-Math.cos(a) * 58).toFixed(1)}" x2="${(Math.sin(a) * 70).toFixed(1)}" y2="${(-Math.cos(a) * 70).toFixed(1)}" stroke-width="3"/>`);
+  }
+  return `<svg viewBox="-150 -150 300 300" fill="none" stroke="currentColor" stroke-linecap="round">
+    <circle r="146" stroke-width="2"/>${ticks.join("")}
+    <circle r="104" stroke-width="2"/><circle r="74" stroke-width="2"/>${grips.join("")}
+    <circle r="20" stroke-width="3"/><path d="M0 -104 L0 -84" stroke-width="5"/>
+  </svg>`;
+}
+document.querySelectorAll(".dial").forEach((d) => { d.innerHTML = makeDial(); });
+
 const currentView = () => VIEWS.find((v) => !$("view-" + v).hidden);
 
 function toast(msg) {
@@ -607,6 +635,11 @@ function renderReceipts() {
     btn.setAttribute("aria-pressed", String(f === listFilter));
   });
   $("filters").hidden = receipts.length === 0;
+  const valid = receipts.filter((r) => ["valid", "soon"].includes(warrantyBucket(r))).length;
+  const soon = receipts.filter((r) => warrantyBucket(r) === "soon").length;
+  $("rec-summary").textContent = !receiptsLoaded ? "" : !receipts.length ? "עוד אין קבלות"
+    : [receipts.length === 1 ? "קבלה אחת" : `${receipts.length} קבלות`,
+       valid ? `${valid} באחריות` : "", soon ? `${soon} פגות בקרוב` : ""].filter(Boolean).join(", ");
 
   // התראה על קבלות כפולות, עם מעבר לתצוגה שלהן בלבד
   const dupCount = dupMap.size;

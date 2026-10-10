@@ -495,3 +495,94 @@ html[data-vt="to-rec"]::view-transition-new(root) { animation-name: vt-in-right;
 .pick-opt span { display: flex; flex-direction: column; gap: 2px; }
 .pick-opt small { color: var(--muted); font-size: 13px; }
 @keyframes pop-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* ===================== הכספת: עיצוב ===================== */
+/* כל אזור עם צבע משלו: ירוק כהה לקבלות, כחול כהה לרפואי. רקע המסך מקבל גוון קריר של אותו צבע */
+:root {
+  --bg: #EBF2EF;
+  --line: #D8E1DD;
+  --line-soft: #E2E9E6;
+  --off-tint: #E6ECE9;
+  --hero: #0E4D47;
+}
+html[data-area="med"] {
+  --bg: #ECF0F7;
+  --line: #D9E0EB;
+  --line-soft: #E2E7F0;
+  --off-tint: #E6EAF2;
+}
+.med { --hero: #1C3D78; }
+html, body { overflow-x: clip; }
+body { background: var(--bg); transition: background-color .35s ease; }
+.app-header h1 { font-family: 'Suez One', 'Rubik', serif; font-weight: 400; letter-spacing: -.2px; }
+
+/* רצועת הכותרת של הרשימות, עם חוגת כספת ברקע */
+.hero {
+  position: relative; overflow: hidden; isolation: isolate;
+  background: var(--hero); color: #fff;
+  margin: calc(-16px - env(safe-area-inset-top)) calc(50% - 50vw) 0;
+  padding: calc(20px + env(safe-area-inset-top)) calc(50vw - 50% + 20px) 50px;
+  border-radius: 0 0 30px 30px;
+  display: flex; flex-direction: column; gap: 14px;
+  view-transition-name: hero;
+}
+.hero > :not(.dial) { position: relative; z-index: 1; }
+.hero .app-header h1 { color: #fff; font-size: 30px; }
+.hero .icon-btn, .hero .refresh-btn { color: #fff; }
+.hero .refresh-btn:active { background: rgba(255,255,255,.14); }
+.hero .avatar { background: rgba(255,255,255,.16); color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,.35); }
+.hero-summary { margin: -8px 0 0; min-height: 1.4em; font-size: 15px; color: rgba(255,255,255,.8); }
+.hero .tabs { background: rgba(0,0,0,.2); }
+.hero .tab { color: rgba(255,255,255,.82); }
+.hero .tab.active, .hero .tab.tab-med.active { color: var(--hero); }
+.hero .tab-pill, .hero .tabs[data-active="med"] .tab-pill { box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+
+.dial {
+  position: absolute; z-index: 0; width: 340px; height: 340px;
+  inset-inline-end: -120px; top: -130px;
+  color: #fff; opacity: .12; pointer-events: none;
+  transform: rotate(var(--rot, 0deg));
+  view-transition-name: dial;
+}
+.dial svg { width: 100%; height: 100%; display: block; }
+/* ברפואי החוגה מסובבת: במעבר בין האזורים היא מסתובבת כמו בפתיחת כספת */
+.med .dial { --rot: 150deg; }
+::view-transition-group(dial) { animation-duration: .7s; animation-timing-function: cubic-bezier(.3, 1.2, .4, 1); }
+::view-transition-group(hero) { animation-duration: .34s; }
+
+/* החיפוש עולה על הרצועה */
+.hero + .search {
+  margin-top: -40px; position: relative; z-index: 2;
+  border-color: transparent; box-shadow: 0 8px 24px rgba(10, 40, 50, .12);
+}
+.search:focus-within { outline: 2px solid var(--accent); }
+.fab { box-shadow: 0 8px 20px color-mix(in srgb, var(--hero) 35%, transparent); }
+
+/* כרטיסים: לבנים על הרקע הצבעוני, עם קו עדין */
+.receipt, .bulk-item, .card { border-color: var(--line-soft); }
+.receipt { transition: transform .12s ease; }
+.receipt:active { transform: scale(.985); }
+
+/* מסך הכניסה: הכספת עצמה */
+.view-login {
+  max-width: none; margin: 0;
+  padding: 0 max(32px, calc(50% - 178px));
+  background: linear-gradient(165deg, #0E4D47 0%, #123F5C 55%, #1C3D78 100%);
+  color: #fff;
+}
+.login-hero h1 { font-family: 'Suez One', 'Rubik', serif; font-weight: 400; font-size: 46px; margin-top: 4px; }
+.login-hero p { color: rgba(255,255,255,.82); }
+.view-login .muted { color: rgba(255,255,255,.72); }
+.view-login .error { color: #FFC2B8; }
+.btn-google { border: 0; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+.dial-login {
+  position: relative; inset: auto; width: 210px; height: 210px; opacity: .92;
+  animation: dial-open 1.6s cubic-bezier(.2, .8, .2, 1) .1s both;
+}
+@keyframes dial-open { from { transform: rotate(-210deg); opacity: 0; } 30% { opacity: .92; } }
+@media (prefers-reduced-motion: reduce) { .dial-login { animation: none; } }
+.hero .app-header h1 { font-size: 28px; white-space: nowrap; }
+.dial { width: 360px; height: 360px; top: -30px; inset-inline-end: -170px; }
+.filter-chip.active { background: var(--hero); border-color: var(--hero); }
+.login-hero p { max-width: 300px; }
+.hero + .search { view-transition-name: area-search; }
