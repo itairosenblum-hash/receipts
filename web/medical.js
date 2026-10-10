@@ -61,6 +61,7 @@ export function initMedical(ctx) {
     db, call, $, el, toast, busy, show, currentView, errMsg, norm,
     toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile, withYearDividers,
     ensureSearchIndex, textSnippet, snippetEl, indexInBackground, uploadUI, uploadWithProgress,
+    makeRowCard, previewTextEl, previewActions,
     MAX_TOTAL_BYTES, setupBulkSources, isAdmin, driveConnected
   } = ctx;
 
@@ -170,7 +171,7 @@ export function initMedical(ctx) {
     $("med-members-banner").hidden = members.length > 0;
     $("med-drive-banner").hidden = driveConnected();
 
-    $("med-list").replaceChildren(...withYearDividers(list, (d) => toDate(d.date), (d) => el("a", { class: "receipt", href: `#/m/d/${d.id}` },
+    $("med-list").replaceChildren(...withYearDividers(list, (d) => toDate(d.date), (d) => makeRowCard("med", d.id, el("a", { class: "receipt", href: `#/m/d/${d.id}` },
       docBadge(d),
       el("div", { class: "receipt-main" },
         el("div", { class: "receipt-title", text: d.title || DOC_TYPES[d.docType] || "מסמך" }),
@@ -179,13 +180,33 @@ export function initMedical(ctx) {
         term && snippetEl(textSnippet("medical", d.id, term))
       ),
       el("div", { class: "receipt-date", text: fmtDate(toDate(d.date)) })
-    )));
+    ), () => medPreview(d))));
 
     $("med-empty-bulk").hidden = docs.length > 0;
     const empty = $("med-empty");
     empty.hidden = !docsLoaded || list.length > 0;
     empty.querySelector("h2").textContent = docs.length ? "לא נמצאו מסמכים" : "עוד אין מסמכים רפואיים";
     empty.querySelector("p").textContent = docs.length ? "נסו לשנות את החיפוש או הסינון." : "לחצו על הפלוס כדי להוסיף את המסמך הראשון.";
+  }
+
+  // תצוגה מקדימה של מסמך ברשימה: פרטים עיקריים ושורות מתוך המסמך
+  function medPreview(d) {
+    const facts = [
+      ["סוג", DOC_TYPES[d.docType]],
+      ["תחום", specName(d.specialty)],
+      ["רופא / מוסד", d.provider],
+      ["של", memberName(d.memberId)]
+    ].filter(([, v]) => v);
+    const pages = (d.files || []).length;
+    return [
+      el("dl", { class: "pv-dl" }, ...facts.map(([k, v]) => el("div", {}, el("dt", { text: k }), el("dd", { text: v })))),
+      ((d.tags || []).length || d.notes) && el("div", { class: "pv-facts" },
+        ...(d.tags || []).map((t) => el("span", { class: "pv-chip", text: t })),
+        d.notes && el("div", { class: "pv-notes", text: d.notes })
+      ),
+      previewTextEl("medical", d.id),
+      previewActions(`#/m/d/${d.id}`, pages ? () => openFile(d.id, d.files[0]) : null, pages > 1 ? `צפייה (${pages} עמודים)` : "צפייה במסמך")
+    ];
   }
 
   $("med-search").addEventListener("input", () => { if ($("med-search").value.trim()) ensureSearchIndex(); renderList(); });

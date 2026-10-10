@@ -10,7 +10,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
-import { initMedical } from "./medical.js?v=7";
+import { initMedical } from "./medical.js?v=8";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -184,6 +184,86 @@ function snippetEl(sn) {
 // תמלול ברקע אחרי שמירה או שינוי קבצים; לא מעכב את המשתמש
 function indexInBackground(kind, id) {
   call("indexDoc", 300000)({ kind, id }).catch((e) => console.warn("index failed", e));
+}
+
+/* ---------- inline preview of a list row ---------- */
+// לחיצה על שורה פותחת אותה במקום עם פרטים עיקריים ושורות מתוך המסמך; לחיצה נוספת סוגרת.
+// "פתיחה" עובר למסך המלא. רק שורה אחת פתוחה בכל רשימה.
+const expandedRow = { rec: null, med: null };
+
+function makeRowCard(listKey, id, rowEl, buildPreview) {
+  const open = expandedRow[listKey] === id;
+  const inner = el("div", { class: "row-preview-inner" });
+  if (open) inner.replaceChildren(...buildPreview().filter(Boolean));
+  const card = el("div", { class: "row-card" + (open ? " open" : "") }, rowEl, el("div", { class: "row-preview" }, inner));
+  rowEl.setAttribute("aria-expanded", String(open));
+  rowEl.addEventListener("click", (e) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+    e.preventDefault();
+    const list = card.parentElement;
+    if (card.classList.contains("open")) {
+      card.classList.remove("open");
+      rowEl.setAttribute("aria-expanded", "false");
+      expandedRow[listKey] = null;
+      return;
+    }
+    list?.querySelectorAll(".row-card.open").forEach((c) => {
+      c.classList.remove("open");
+      c.firstElementChild.setAttribute("aria-expanded", "false");
+    });
+    ensureSearchIndex();
+    inner.replaceChildren(...buildPreview().filter(Boolean));
+    expandedRow[listKey] = id;
+    rowEl.setAttribute("aria-expanded", "true");
+    requestAnimationFrame(() => {
+      card.classList.add("open");
+      // אם התצוגה נפתחה בתחתית המסך, גוללים כדי שתיראה
+      setTimeout(() => {
+        const r = card.getBoundingClientRect();
+        if (r.bottom > innerHeight - 20) window.scrollBy({ top: Math.min(r.bottom - innerHeight + 90, r.top - 80), behavior: "smooth" });
+      }, 280);
+    });
+  });
+  return card;
+}
+
+// שורות מתוך הטקסט שנסרק מהמסמך
+function previewTextEl(kind, id) {
+  if (!searchIndexLoaded) return el("div", { class: "pv-text muted", text: "טוען תוכן…" });
+  const ix = searchIndex.get(`${kind}_${id}`);
+  if (!ix) return el("div", { class: "pv-text muted", text: "התוכן של המסמך עוד לא נסרק." });
+  if (!ix.text) return null;
+  return el("div", { class: "pv-text" }, el("span", { class: "pv-quote", "aria-hidden": "true", text: "”" }), ix.text.slice(0, 320));
+}
+
+function previewActions(openHref, onViewFile, viewLabel) {
+  return el("div", { class: "pv-actions" },
+    el("a", { class: "btn-primary pv-btn", href: openHref, text: "פתיחה" }),
+    onViewFile && el("button", { type: "button", class: "btn-secondary pv-btn", text: viewLabel, onclick: onViewFile })
+  );
+}
+
+function receiptPreview(r) {
+  const items = itemsOf(r);
+  const cur = r.currency || "ILS";
+  return [
+    el("ul", { class: "pv-items" },
+      ...items.slice(0, 4).map((it) => {
+        const w = warrantyStatus(it.warrantyEnd);
+        const meta = [typeof it.price === "number" ? fmtAmount(it.price, cur) : "",
+          w ? (w.cls === "off" ? "אחריות פגה" : `אחריות עד ${fmtDate(w.end)}`) : ""].filter(Boolean).join(" · ");
+        return el("li", {}, el("span", { class: "pv-name", text: it.name }), meta && el("span", { class: "pv-meta", text: meta }));
+      }),
+      items.length > 4 && el("li", { class: "muted", text: `ועוד ${items.length - 4} מוצרים` })
+    ),
+    (r.servicePhone || (r.tags || []).length || r.notes) && el("div", { class: "pv-facts" },
+      r.servicePhone && el("span", { class: "pv-chip" }, "שירות לקוחות ", el("bdi", { dir: "ltr", text: r.servicePhone })),
+      ...(r.tags || []).map((t) => el("span", { class: "pv-chip", text: t })),
+      r.notes && el("div", { class: "pv-notes", text: r.notes })
+    ),
+    previewTextEl("receipts", r.id),
+    previewActions(`#/r/${r.id}`, (r.files || []).length ? () => openFile(r.id, (r.files.find((f) => f.kind === "receipt") || r.files[0])) : null, "צפייה בקבלה")
+  ];
 }
 
 /* ---------- year dividers in the lists ---------- */
@@ -775,7 +855,7 @@ function renderReceipts() {
   $("receipts").replaceChildren(...withYearDividers(list, (r) => toDate(r.purchaseDate), (r) => {
     const w = warrantyInfo(r);
     const items = itemsOf(r);
-    return el("a", { class: "receipt", href: `#/r/${r.id}` },
+    return makeRowCard("rec", r.id, el("a", { class: "receipt", href: `#/r/${r.id}` },
       catBadge(r.categoryId),
       el("div", { class: "receipt-main" },
         el("div", { class: "receipt-title" },
@@ -790,7 +870,7 @@ function renderReceipts() {
         term && snippetEl(textSnippet("receipts", r.id, term))
       ),
       el("div", { class: "receipt-amount", text: fmtAmount(r.amount, r.currency || "ILS") })
-    );
+    ), () => receiptPreview(r));
   }));
 
   const empty = $("empty");
@@ -2451,6 +2531,7 @@ const medical = initMedical({
   db, call, $, el, toast, busy, show, currentView, errMsg, norm,
   toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile, withYearDividers,
   ensureSearchIndex, textSnippet, snippetEl, indexInBackground, uploadUI, uploadWithProgress,
+  makeRowCard, previewTextEl, previewActions,
   MAX_TOTAL_BYTES, setupBulkSources, isAdmin: () => isAdmin, driveConnected: () => (driveCfg ? !!driveCfg.connected : true)
 });
 
