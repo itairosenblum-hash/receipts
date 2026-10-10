@@ -8,7 +8,7 @@ import {
   collection, query, orderBy, arrayUnion, arrayRemove, Timestamp, serverTimestamp, deleteField
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
-import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
+import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
 import { initMedical } from "./medical.js?v=1";
 
@@ -426,6 +426,7 @@ function startApp() {
   }, (e) => console.error(e)));
 
   medical.start(unsubs);
+  listenForeground();
 
   unsubs.push(onSnapshot(accessRef, renderAccess, (e) => {
     console.error(e);
@@ -1459,6 +1460,27 @@ async function renderNotify() {
   }
 }
 
+// כשהאפליקציה פתוחה, Firebase מעביר את ההודעה לדף ולא מציג אותה בעצמו; מציגים אותה כאן דרך ה-Service Worker
+let foregroundListening = false;
+async function listenForeground() {
+  if (foregroundListening || !("Notification" in window) || !("serviceWorker" in navigator)) return;
+  if (!(await messagingSupported().catch(() => false))) return;
+  foregroundListening = true;
+  onMessage(getMessaging(app), async (payload) => {
+    const n = payload.notification || {};
+    const link = payload.fcmOptions?.link || payload.data?.link || "";
+    try {
+      if (Notification.permission !== "granted") throw new Error("no permission");
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(n.title || "קבלות ואחריות", {
+        body: n.body || "", icon: "icon-192.png", badge: "icon-192.png", dir: "rtl", lang: "he", data: { link }
+      });
+    } catch {
+      toast([n.title, n.body].filter(Boolean).join(" · "));
+    }
+  });
+}
+
 $("btn-notify").addEventListener("click", async () => {
   if (notifyBusy) return;
   notifyBusy = true;
@@ -1475,6 +1497,7 @@ $("btn-notify").addEventListener("click", async () => {
       updatedAt: serverTimestamp()
     }, { merge: true });
     toast("ההתראות הופעלו במכשיר הזה");
+    listenForeground();
   } catch (e) {
     console.error(e);
     toast(e.user ? e.message : "הפעלת ההתראות נכשלה: " + (e.code || e.message));
@@ -1489,7 +1512,7 @@ $("btn-notify-test").addEventListener("click", async () => {
   busy("שולח התראת בדיקה…");
   try {
     await call("sendTestNotification", 30000)();
-    toast("נשלחה התראה. אם האפליקציה פתוחה, ייתכן שהיא תופיע רק אחרי שתצאו ממנה.");
+    toast("נשלחה התראת בדיקה");
   } catch (e) {
     toast(errMsg(e));
   } finally {

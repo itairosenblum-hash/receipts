@@ -17,3 +17,15 @@ firebase.messaging();
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 self.addEventListener("fetch", () => {});
+// לחיצה על התראה שהאפליקציה הציגה בעצמה (כשהייתה פתוחה): פותחת את הקישור שצורף לה
+self.addEventListener("notificationclick", (event) => {
+  const link = event.notification.data?.link;
+  if (!link) return;
+  event.notification.close();
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const win = wins.find((w) => w.url.split("#")[0] === link.split("#")[0]);
+    if (win) { await win.focus(); return win.navigate(link); }
+    return self.clients.openWindow(link);
+  })());
+});
