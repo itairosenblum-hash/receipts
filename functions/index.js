@@ -547,6 +547,8 @@ async function sendToTokens(targets, { title, body, link }) {
       fcmOptions: { link }
     }
   });
+  const errors = res.responses.filter((r) => r.error).map((r) => `${r.error.code}: ${r.error.message}`);
+  if (errors.length) logger.error("fcm send failures", { errors });
   // ניקוי טוקנים של מכשירים שכבר לא רשומים
   await Promise.all(res.responses.map((r, i) => {
     const code = r.error?.code || "";
@@ -555,7 +557,7 @@ async function sendToTokens(targets, { title, body, link }) {
     }
     return null;
   }));
-  return { sent: res.successCount, failed: res.failureCount };
+  return { sent: res.successCount, failed: res.failureCount, errors };
 }
 
 const reminderText = (r, days, end) => ({
@@ -592,6 +594,9 @@ export const sendTestNotification = onCall(async (request) => {
     body: "כך תיראה תזכורת חודש ושבוע לפני שאחריות פגה.",
     link: NOTIFY_URL.value()
   });
-  if (!res.sent) throw new HttpsError("internal", "שליחת ההתראה נכשלה");
+  if (!res.sent) {
+    const codes = [...new Set((res.errors || []).map((e) => e.split(":")[0].replace("messaging/", "")))].join(", ");
+    throw new HttpsError("internal", `שליחת ההתראה נכשלה (${codes || "לא ידוע"}). נסו "רענון הרישום" ושוב בדיקה.`, { errors: res.errors });
+  }
   return res;
 });
