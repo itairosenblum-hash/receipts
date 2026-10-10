@@ -794,3 +794,13 @@ html[data-area="med"] #upload { --accent: #2F5DA8; --accent-tint: #E2EAF7; --acc
 @keyframes pv-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent); } }
 .pv-scanning { display: flex !important; align-items: center; gap: 8px; }
 .pv-btn { white-space: nowrap; }
+
+/* תוכן המסמך בתצוגה המקדימה: גלילה בתוך התיבה */
+.pv-text.pv-scroll {
+  display: block; -webkit-line-clamp: unset; max-height: 11.5em; overflow-y: auto;
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  white-space: pre-line; scrollbar-width: thin;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
+}
+.pv-text.pv-scroll.at-end { mask-image: none; }
+.pv-text.pv-scroll:focus-visible { outline: 2px solid var(--accent); }

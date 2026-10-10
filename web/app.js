@@ -241,7 +241,8 @@ function previewTextEl(kind, id) {
     return el("div", { class: "pv-text muted pv-scanning" }, el("span", { class: "spinner small" }), "קורא את תוכן המסמך…");
   }
   if (!ix.text) return ix.failed ? el("div", { class: "pv-text muted", text: "לא הצלחנו לקרוא את תוכן המסמך." }) : null;
-  return el("div", { class: "pv-text" }, el("span", { class: "pv-quote", "aria-hidden": "true", text: "”" }), ix.text.slice(0, 320));
+  // כל הטקסט שנסרק, בתיבה עם גלילה פנימית
+  return el("div", { class: "pv-text pv-scroll", tabindex: "0", role: "region", "aria-label": "תוכן המסמך" }, ix.text);
 }
 
 const SHARE_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>';
@@ -346,6 +347,18 @@ function receiptPreview(r) {
       })
   ];
 }
+
+// מסתיר את ההדרגה בתחתית תיבת הטקסט כשמגיעים לסוף, או כשאין מה לגלול
+document.addEventListener("scroll", (e) => {
+  const t = e.target;
+  if (t?.classList?.contains("pv-scroll")) t.classList.toggle("at-end", t.scrollTop + t.clientHeight >= t.scrollHeight - 4);
+}, true);
+new MutationObserver(() => {
+  document.querySelectorAll(".pv-scroll:not([data-checked])").forEach((t) => {
+    t.dataset.checked = "1";
+    requestAnimationFrame(() => t.classList.toggle("at-end", t.scrollHeight <= t.clientHeight + 4));
+  });
+}).observe(document.body, { childList: true, subtree: true });
 
 /* ---------- year dividers in the lists ---------- */
 
