@@ -115,10 +115,22 @@ async function rootFolderId() {
 
 async function yearFolderId(drive, year) {
   const cfg = (await DRIVE_CONFIG.get()).data() || {};
-  const cached = cfg.years?.[year];
-  if (cached) return cached;
-
   const root = await rootFolderId();
+  const cached = cfg.years?.[year];
+  if (cached) {
+    // תיקיית שנה שמורה חייבת לשבת בתוך תיקיית האפליקציה; אם יצאה ממנה, מחזירים אותה פנימה
+    const meta = await drive.files.get({ fileId: cached, fields: "id,parents,trashed" })
+      .then((r) => r.data).catch(() => null);
+    if (meta && !meta.trashed) {
+      const parents = meta.parents || [];
+      if (!parents.includes(root)) {
+        await drive.files.update({ fileId: cached, addParents: root, removeParents: parents.join(","), fields: "id" })
+          .catch((e) => logger.warn("could not move year folder into app folder", e.message));
+      }
+      return cached;
+    }
+  }
+
   const existing = await drive.files.list({
     q: `'${root}' in parents and name = '${year}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
     fields: "files(id)",
