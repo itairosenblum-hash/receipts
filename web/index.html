@@ -14,8 +14,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&family=Suez+One&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=30">
-<script type="module" src="app.js?v=32"></script>
+<link rel="stylesheet" href="app.css?v=31">
+<script type="module" src="app.js?v=33"></script>
 </head>
 <body>
 
@@ -160,6 +160,24 @@
     <label class="field">חנות
       <input name="store" maxlength="80">
     </label>
+    <details class="contact-fields" id="contact-fields">
+      <summary>פרטי קשר של החנות</summary>
+      <p class="muted small">מה שמודפס על הקבלה ממולא אוטומטית. אתר ושירות לקוחות שחסרים יחופשו באינטרנט אחרי השמירה.</p>
+      <label class="field">אתר
+        <input name="storeWebsite" type="url" inputmode="url" dir="ltr" maxlength="200" placeholder="https://">
+      </label>
+      <div class="grid-2">
+        <label class="field">שירות לקוחות
+          <input name="servicePhone" type="tel" dir="ltr" maxlength="24" placeholder="*1234">
+        </label>
+        <label class="field">טלפון הסניף
+          <input name="storePhone" type="tel" dir="ltr" maxlength="24">
+        </label>
+      </div>
+      <label class="field">כתובת הסניף
+        <input name="storeAddress" maxlength="160">
+      </label>
+    </details>
     <div class="grid-2">
       <label class="field">סכום כולל
         <span class="money"><input name="amount" type="text" inputmode="decimal" autocomplete="off" class="money-input"><span class="money-sign" aria-hidden="true">₪</span></span>
@@ -213,6 +231,7 @@
   <div id="detail-dup" class="dup-card" role="alert" hidden></div>
   <div id="detail-warranty" class="card"></div>
   <dl id="detail-rows" class="card rows"></dl>
+  <div id="detail-contact" class="card contact-card" hidden></div>
   <div class="card">
     <h2>קבצים</h2>
     <ul id="detail-files" class="file-list"></ul>

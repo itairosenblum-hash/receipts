@@ -22,6 +22,38 @@ const decodeFiles = (files) => decodeFilesWith(files, FILE_KINDS, "other");
 
 /* ---------- validation ---------- */
 
+/* ---------- store contact details ---------- */
+
+// טלפון: ספרות, כוכבית, מקף, פלוס ורווח; בין 4 ל-15 ספרות (כולל *1234 ו-1-700-...)
+function cleanPhone(v) {
+  const s = String(v || "").replace(/[^\d*+\- ]/g, "").replace(/\s+/g, " ").trim().slice(0, 24);
+  const digits = s.replace(/\D/g, "").length;
+  return digits >= 4 && digits <= 15 ? s : "";
+}
+
+// אתר: רק http/https עם דומיין אמיתי; נשמר בלי פרמטרים
+function cleanWebsite(v) {
+  let raw = String(v || "").trim();
+  if (!raw) return "";
+  if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
+  try {
+    const u = new URL(raw);
+    if (!/^https?:$/.test(u.protocol) || !/\.[a-z]{2,}$/i.test(u.hostname)) return "";
+    return (u.origin + (u.pathname === "/" ? "/" : u.pathname)).slice(0, 200);
+  } catch {
+    return "";
+  }
+}
+
+function contactFields(r) {
+  return {
+    storeWebsite: cleanWebsite(r.storeWebsite),
+    storePhone: cleanPhone(r.storePhone),
+    servicePhone: cleanPhone(r.servicePhone),
+    storeAddress: String(r.storeAddress || "").trim().slice(0, 160)
+  };
+}
+
 // קבלה מכילה רשימת מוצרים; לכל מוצר אחריות משלו. השדות העליונים (productName, warrantyEnd) הם סיכום לתצוגה ולחיפוש.
 function cleanReceipt(r) {
   if (!r || typeof r !== "object") throw new HttpsError("invalid-argument", "נתוני קבלה חסרים");
@@ -64,7 +96,8 @@ function cleanReceipt(r) {
     categoryId: String(r.categoryId || "other").slice(0, 40),
     tags,
     warrantyEnd: ends.length ? Timestamp.fromMillis(Math.max(...ends)) : null,
-    notes: String(r.notes || "").trim().slice(0, 1000)
+    notes: String(r.notes || "").trim().slice(0, 1000),
+    ...contactFields(r)
   };
 }
 
@@ -222,6 +255,7 @@ export const driveCallback = onRequest({ secrets: SECRETS }, async (req, res) =>
 const SCAN_INSTRUCTIONS = `You extract structured data from purchase receipts and tax invoices, usually Israeli and in Hebrew (קבלה, חשבונית מס, חשבונית מס/קבלה).
 Rules:
 - store: the business name as printed (Hebrew if printed in Hebrew). Drop legal suffixes like בע"מ unless they are part of the brand.
+- storePhone, storeWebsite, storeAddress: the branch phone number, website and branch address exactly as printed on the receipt, or null. Do not look them up or guess.
 - items: every product line the customer bought, in the order printed. One entry per distinct product (merge quantity lines; price = that line's total).
   Skip lines that are not products: delivery, installation, bags, fees, deposits, rounding, discounts, coupons, payment lines and VAT lines.
   A purchased extended warranty is not a product: apply its period to the product it covers.
@@ -246,6 +280,9 @@ const SCAN_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     store: { type: Type.STRING, nullable: true },
+    storePhone: { type: Type.STRING, nullable: true },
+    storeWebsite: { type: Type.STRING, nullable: true },
+    storeAddress: { type: Type.STRING, nullable: true },
     items: {
       type: Type.ARRAY,
       items: {
@@ -281,7 +318,7 @@ const SCAN_SCHEMA = {
     }
   },
   required: ["store", "items", "amount", "purchaseDate", "categoryId", "tags", "confidence"],
-  propertyOrdering: ["store", "items", "amount", "currency", "purchaseDate", "purchaseTime", "categoryId", "tags", "confidence"]
+  propertyOrdering: ["store", "storePhone", "storeWebsite", "storeAddress", "items", "amount", "currency", "purchaseDate", "purchaseTime", "categoryId", "tags", "confidence"]
 };
 
 function cleanAi(ai) {
@@ -365,6 +402,9 @@ export const scanReceipt = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 3
   return {
     model: GEMINI_MODEL.value(),
     store: result.store || null,
+    storePhone: cleanPhone(result.storePhone) || null,
+    storeWebsite: cleanWebsite(result.storeWebsite) || null,
+    storeAddress: result.storeAddress ? String(result.storeAddress).trim().slice(0, 160) : null,
     items: (Array.isArray(result.items) ? result.items : []).slice(0, 30).map((it) => ({
       name: String(it?.name || it?.printedName || "").trim(),
       printedName: it?.printedName ? String(it.printedName).trim() : null,
@@ -497,6 +537,68 @@ export const getFile = onCall({ secrets: SECRETS, memory: "512MiB" }, async (req
     mimeType: file.mimeType,
     data: Buffer.from(res.data).toString("base64")
   };
+});
+
+/* ---------- store lookup (website + customer service) ---------- */
+
+const STORE_CACHE_DAYS = 90;
+const storeKey = (name) => crypto.createHash("sha1").update(String(name).toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")).digest("hex");
+
+// מחפש בגוגל (דרך Gemini) את האתר הרשמי ואת מוקד שירות הלקוחות של חנות. התוצאה נשמרת לכל שם חנות ל-90 יום.
+async function findStoreInfo(name, address, force) {
+  const ref = db.collection("stores").doc(storeKey(name));
+  const cached = (await ref.get()).data();
+  if (!force && cached?.checkedAt && Date.now() - cached.checkedAt.toMillis() < STORE_CACHE_DAYS * 86400000) {
+    return { website: cached.website || "", servicePhone: cached.servicePhone || "" };
+  }
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY.value(), httpOptions: { timeout: 90000 } });
+  const prompt = [
+    `Find the official website and the customer service phone number of this Israeli business: "${name}".`,
+    address ? `The receipt lists this branch address: ${address}.` : "",
+    "Search the web. Prefer the business's own site. For the phone, prefer the national customer service line",
+    "(מוקד שירות לקוחות, often *1234 or 1-700-...); if there is none, the main phone of the business.",
+    'Reply with JSON only, no other text: {"website": "https://..." or null, "servicePhone": "..." or null, "confidence": number 0 to 1}.',
+    "Use null for anything you could not confirm from search results. Never guess."
+  ].filter(Boolean).join("\n");
+  let out = {};
+  try {
+    const res = await ai.models.generateContent({
+      model: GEMINI_MODEL.value(),
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: { tools: [{ googleSearch: {} }], temperature: 0 }
+    });
+    const text = String(res.text || "");
+    out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1) || "{}");
+  } catch (e) {
+    logger.warn("store lookup failed", name, e?.message);
+    throw new HttpsError("internal", "החיפוש נכשל. אפשר לנסות שוב מאוחר יותר.");
+  }
+  const sure = typeof out.confidence !== "number" || out.confidence >= 0.6;
+  const info = {
+    website: sure ? cleanWebsite(out.website) : "",
+    servicePhone: sure ? cleanPhone(out.servicePhone) : ""
+  };
+  await ref.set({ name: String(name).slice(0, 80), ...info, checkedAt: FieldValue.serverTimestamp() });
+  return info;
+}
+
+// משלים לקבלה את האתר ואת שירות הלקוחות של החנות, בלי לדרוס פרטים שכבר מולאו (מהקבלה או ידנית)
+export const lookupStore = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 120 }, async (request) => {
+  await requireAllowed(request);
+  const ref = db.collection("receipts").doc(String(request.data?.receiptId || ""));
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "הקבלה לא נמצאה");
+  const r = snap.data();
+  const update = { storeInfoAt: FieldValue.serverTimestamp() };
+  const found = [];
+  if (r.store) {
+    const info = await findStoreInfo(r.store, r.storeAddress, request.data?.force === true);
+    if (info.website && (!r.storeWebsite || request.data?.force)) { update.storeWebsite = info.website; found.push("storeWebsite"); }
+    if (info.servicePhone && (!r.servicePhone || request.data?.force)) { update.servicePhone = info.servicePhone; found.push("servicePhone"); }
+    if (found.length) update.storeInfoSearched = FieldValue.arrayUnion(...found);
+  }
+  await ref.update(update);
+  return { found };
 });
 
 /* ---------- warranty notifications ---------- */

@@ -704,6 +704,7 @@ const form = $("receipt-form");
 const CONFIDENCE_FIELDS = {
   store: "store", amount: "amount", purchaseDate: "date", purchaseTime: "time", categoryId: "categoryId"
 };
+const CONTACT_KEYS = ["storeWebsite", "servicePhone", "storePhone", "storeAddress"];
 const blankItem = () => ({ name: "", printedName: "", price: null, warrantyMonths: null, serialNumber: "" });
 
 function fillCategorySelect() {
@@ -753,6 +754,8 @@ function openEdit(id) {
     f.time.value = r.hasTime ? fmtTime(d) : "";
     f.tags.value = (r.tags || []).join(", ");
     f.notes.value = r.notes || "";
+    for (const k of CONTACT_KEYS) f[k].value = r[k] || "";
+    $("contact-fields").open = CONTACT_KEYS.some((k) => r[k]);
     formItems = itemsOf(r).map((it) => ({
       name: it.name || "",
       printedName: it.printedName || "",
@@ -763,6 +766,7 @@ function openEdit(id) {
     }));
   } else {
     f.date.value = isoDate(new Date());
+    $("contact-fields").open = false;
     formItems = [blankItem()];
   }
   renderPendingFiles();
@@ -977,6 +981,10 @@ function applyScan(d, force) {
     f[name].value = value;
   };
   set("store", d.store);
+  set("storePhone", d.storePhone);
+  set("storeWebsite", d.storeWebsite);
+  set("storeAddress", d.storeAddress);
+  if (d.storePhone || d.storeWebsite || d.storeAddress) $("contact-fields").open = true;
   set("amount", formatMoney(d.amount));
   set("date", d.purchaseDate);
   set("time", d.purchaseTime);
@@ -1109,7 +1117,8 @@ form.addEventListener("submit", async (ev) => {
     hasTime,
     categoryId: f.categoryId.value || "other",
     tags: f.tags.value.split(/[,،]/).map((t) => t.trim()).filter(Boolean),
-    notes: f.notes.value.trim()
+    notes: f.notes.value.trim(),
+    ...Object.fromEntries(CONTACT_KEYS.map((k) => [k, f[k].value.trim()]))
   };
 
   $("btn-save").disabled = true;
@@ -1135,6 +1144,11 @@ form.addEventListener("submit", async (ev) => {
         warrantyEnd: ends.length ? Timestamp.fromMillis(Math.max(...ends)) : null,
         warrantyMonths: deleteField(),
         serialNumber: deleteField(),
+        // שם חנות חדש: מחפשים שוב את הפרטים שלה. שדה שנערך ידנית כבר לא מסומן כ"נמצא בחיפוש"
+        ...(normText(receipt.store) !== normText(receipts.find((x) => x.id === editingId)?.store)
+          ? { storeInfoAt: deleteField() } : {}),
+        storeInfoSearched: (receipts.find((x) => x.id === editingId)?.storeInfoSearched || [])
+          .filter((k) => receipt[k] && receipt[k] === receipts.find((x) => x.id === editingId)?.[k]),
         updatedAt: serverTimestamp()
       });
       location.hash = `#/r/${editingId}`;
@@ -1273,6 +1287,7 @@ function renderDetail(r) {
     ["הועלה ע״י", r.createdBy]
   ].filter(([, v]) => v);
   $("detail-rows").replaceChildren(...rows.map(([k, v]) => el("div", {}, el("dt", { text: k }), el("dd", { text: v }))));
+  renderContact(r);
 
   // קבצים
   const files = r.files || [];
@@ -1288,6 +1303,71 @@ function renderDetail(r) {
       onclick: () => removeFile(r.id, f)
     })
   )));
+}
+
+/* ---------- store contact card ---------- */
+
+const lookupInFlight = new Set();
+const CONTACT_ICONS = {
+  web: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/>',
+  service: '<path d="M4 13v-1a8 8 0 0 1 16 0v1"/><rect x="3" y="13" width="4" height="6" rx="1.5"/><rect x="17" y="13" width="4" height="6" rx="1.5"/><path d="M19 19c0 1.5-2 2.5-5 2.5"/>',
+  phone: '<path d="M6.6 3h3l1.6 4.2-2 1.3a11 11 0 0 0 6.3 6.3l1.3-2L21 14.4v3A2.6 2.6 0 0 1 18.4 20 15.4 15.4 0 0 1 4 5.6 2.6 2.6 0 0 1 6.6 3z"/>',
+  map: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/>'
+};
+
+function contactRow(icon, label, value, href, searched, ltr = true) {
+  const ic = el("span", { class: "contact-icon", "aria-hidden": "true" });
+  ic.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${CONTACT_ICONS[icon]}</svg>`;
+  return el("a", { class: "contact-row", href, target: href.startsWith("http") ? "_blank" : null, rel: "noopener" },
+    ic,
+    el("span", { class: "contact-text" },
+      el("span", { class: "contact-label", text: label + (searched ? " (נמצא בחיפוש)" : "") }),
+      el("bdi", { class: "contact-value", dir: ltr ? "ltr" : null, text: value })
+    )
+  );
+}
+
+function renderContact(r) {
+  const box = $("detail-contact");
+  const searched = new Set(r.storeInfoSearched || []);
+  const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
+  const tel = (p) => "tel:" + String(p).replace(/[^\d*+#]/g, "").replace(/\*/g, "%2A");
+  const rows = [
+    r.storeWebsite && contactRow("web", "אתר החנות", host(r.storeWebsite), r.storeWebsite, searched.has("storeWebsite")),
+    r.servicePhone && contactRow("service", "שירות לקוחות", r.servicePhone, tel(r.servicePhone), searched.has("servicePhone")),
+    r.storePhone && contactRow("phone", "הסניף", r.storePhone, tel(r.storePhone)),
+    r.storeAddress && contactRow("map", "כתובת הסניף", r.storeAddress, "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(`${r.store || ""} ${r.storeAddress}`), false, false)
+  ].filter(Boolean);
+  const busyNow = lookupInFlight.has(r.id);
+  box.hidden = !r.store && !rows.length;
+  box.replaceChildren(...[
+    el("h2", { text: r.store ? `יצירת קשר עם ${r.store}` : "יצירת קשר" }),
+    ...rows,
+    busyNow && el("div", { class: "contact-busy" }, el("span", { class: "spinner small" }), "מחפש את האתר ואת שירות הלקוחות…"),
+    !busyNow && !rows.length && r.storeInfoAt && el("p", { class: "muted", text: "לא נמצאו פרטים. אפשר להוסיף ידנית בעריכה." }),
+    !busyNow && r.store && r.storeInfoAt && el("button", {
+      type: "button", class: "link-btn contact-research", text: "חיפוש מחדש באינטרנט",
+      onclick: () => lookupStoreInfo(r.id, true)
+    })
+  ].filter(Boolean));
+  // קבלה שעוד לא חיפשו לה פרטים: מחפשים פעם אחת ברקע
+  if (r.store && !r.storeInfoAt && !busyNow && (!r.storeWebsite || !r.servicePhone)) lookupStoreInfo(r.id, false);
+}
+
+async function lookupStoreInfo(id, force) {
+  if (lookupInFlight.has(id)) return;
+  lookupInFlight.add(id);
+  const rerender = () => { const r = receipts.find((x) => x.id === id); if (r && detailId === id) renderContact(r); };
+  rerender();
+  try {
+    const res = await call("lookupStore", 120000)({ receiptId: id, force });
+    if (force) toast(res.data.found?.length ? "הפרטים עודכנו" : "לא נמצאו פרטים חדשים");
+  } catch (e) {
+    if (force) toast(errMsg(e));
+  } finally {
+    lookupInFlight.delete(id);
+    rerender();
+  }
 }
 
 const PDFJS_BASE = "https://cdn.jsdelivr.net/npm/pdfjs-dist@6.4.299/legacy/build/";
@@ -1756,7 +1836,10 @@ function receiptFromAi(ai) {
     hasTime: !!ai.purchaseTime,
     categoryId: ai.categoryId || "other",
     tags: ai.tags || [],
-    notes: ""
+    notes: "",
+    storePhone: ai.storePhone || "",
+    storeWebsite: ai.storeWebsite || "",
+    storeAddress: ai.storeAddress || ""
   };
 }
 
