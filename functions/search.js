@@ -75,7 +75,11 @@ export const indexDoc = onCall({ secrets: [...SECRETS, GEMINI_API_KEY], timeoutS
 export const indexPending = onCall({ secrets: [...SECRETS, GEMINI_API_KEY], timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
   await requireAllowed(request);
   const retryFailed = request.data?.retryFailed === true;
-  const indexSnap = await db.collection("searchIndex").select("fileKey", "failed").get();
+  // בניסיון חוזר: רק מסמכים שנכשלו לפני תחילת הסבב הנוכחי, כדי לא לחזור שוב ושוב על אותו מסמך
+  const since = Number(request.data?.since) || 0;
+  // גודל מנה קטן נותן לדפדפן עדכוני התקדמות תכופים יותר
+  const size = Math.max(1, Math.min(BATCH, parseInt(request.data?.batch, 10) || BATCH));
+  const indexSnap = await db.collection("searchIndex").select("fileKey", "failed", "indexedAt").get();
   const existing = new Map(indexSnap.docs.map((d) => [d.id, d.data()]));
   const pending = [];
   let total = 0;
@@ -86,12 +90,12 @@ export const indexPending = onCall({ secrets: [...SECRETS, GEMINI_API_KEY], time
       const ix = existing.get(`${kind}_${d.id}`);
       const data = d.data();
       if (!(data.files || []).length) continue;
-      if (!ix || ix.fileKey !== fileKey(data) || (retryFailed && ix.failed)) pending.push({ kind, id: d.id, data });
+      if (!ix || ix.fileKey !== fileKey(data) || (retryFailed && ix.failed && (!since || (ix.indexedAt?.toMillis?.() || 0) < since))) pending.push({ kind, id: d.id, data });
     }
   }
   const failed = indexSnap.docs.filter((d) => d.data().failed).length;
   if (request.data?.dryRun) return { done: 0, remaining: pending.length, total, failed };
-  const batch = pending.slice(0, BATCH);
+  const batch = pending.slice(0, size);
   if (batch.length) {
     const drive = await getDrive();
     let next = 0;

@@ -804,3 +804,13 @@ html[data-area="med"] #upload { --accent: #2F5DA8; --accent-tint: #E2EAF7; --acc
 }
 .pv-text.pv-scroll.at-end { mask-image: none; }
 .pv-text.pv-scroll:focus-visible { outline: 2px solid var(--accent); }
+
+/* חלונית סריקה (אותה חלונית כמו ההעלאה, במצב "scan") */
+.upload-icon .up-scan, .scan-only { display: none; }
+#upload[data-mode="scan"] .up-arrow { display: none; }
+#upload[data-mode="scan"] .up-scan { display: block; animation: up-bob 1.4s ease-in-out infinite; }
+#upload[data-mode="scan"] .scan-only { display: flex; }
+#upload.done .up-scan, #upload.done .scan-only { display: none !important; }
+.upload-foot { justify-content: space-between; align-items: center; margin-top: -4px; }
+.awake-note { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.upload-foot .link-btn { min-height: 36px; }

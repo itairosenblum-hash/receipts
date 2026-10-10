@@ -110,9 +110,10 @@ function callWithProgress(name, data, onProgress, timeout = 180000) {
 
 // חלונית ההעלאה: שלב, שם הקובץ, פס התקדמות ואחוזים
 const uploadUI = {
-  open(title, sub) {
+  open(title, sub, mode = "upload") {
     $("upload").hidden = false;
     $("upload").classList.remove("done");
+    $("upload").dataset.mode = mode;
     $("upload-title").textContent = title;
     this.set({ sub, stage: "מכין את הקבצים…", frac: 0, indeterminate: true });
   },
@@ -2169,29 +2170,70 @@ async function renderSearchStatus() {
   }
 }
 
+// סריקת כל המסמכים: חלונית עם התקדמות ואחוזים, והמסך נשאר דולק עד הסוף (Wake Lock)
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && "wakeLock" in navigator && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; });
+    } else if (!on && wakeLock) {
+      await wakeLock.release();
+      wakeLock = null;
+    }
+  } catch (e) {
+    console.warn("wake lock", e);
+  }
+}
+// חזרה לאפליקציה באמצע סריקה: הדפדפן משחרר את הנעילה כשהדף ברקע, אז מבקשים אותה שוב
+document.addEventListener("visibilitychange", () => { if (indexingAll && !document.hidden) keepAwake(true); });
+
+let stopIndexing = false;
 $("btn-index-all").addEventListener("click", async () => {
   if (indexingAll) return;
   indexingAll = true;
-  const btn = $("btn-index-all"), status = $("search-status");
-  const retryFailed = btn.dataset.retry === "1";
-  btn.disabled = true;
-  btn.classList.add("waiting");
+  stopIndexing = false;
+  const retryFailed = $("btn-index-all").dataset.retry === "1";
+  const since = Date.now();
+  uploadUI.open("סריקת המסמכים", "Gemini קורא את התוכן של כל מסמך", "scan");
+  uploadUI.set({ stage: "בודק כמה מסמכים נשארו…", indeterminate: true });
+  await keepAwake(true);
+  let scanned = 0;
   try {
-    for (let round = 0; round < 60; round++) {
-      const res = await call("indexPending", 540000)({ retryFailed: retryFailed && round === 0 });
-      const { remaining, total, done } = res.data;
-      status.textContent = `סורק… ${total - remaining} מתוך ${total}`;
-      if (!remaining || !done) break;
+    const first = (await call("indexPending", 60000)({ dryRun: true, retryFailed, since })).data;
+    const todo = first.remaining || 0;
+    if (!todo) {
+      await uploadUI.done("כל המסמכים כבר נסרקו");
+      return;
     }
-    toast("הסריקה הסתיימה");
+    const show = (left) => {
+      scanned = todo - left;
+      uploadUI.set({ stage: `נסרקו ${scanned} מתוך ${todo}`, frac: scanned / todo });
+    };
+    show(todo);
+    while (!stopIndexing) {
+      const res = (await call("indexPending", 540000)({ retryFailed, since, batch: 3 })).data;
+      show(Math.max(0, res.remaining));
+      if (!res.remaining || !res.done) break;
+    }
+    if (stopIndexing) {
+      uploadUI.close();
+      toast(`הסריקה נעצרה. נסרקו ${scanned} מסמכים`);
+    } else {
+      await uploadUI.done(`הסריקה הסתיימה: ${scanned} מסמכים`);
+    }
   } catch (e) {
+    uploadUI.close();
     toast(errMsg(e));
   } finally {
     indexingAll = false;
-    btn.disabled = false;
-    btn.classList.remove("waiting");
+    await keepAwake(false);
     renderSearchStatus();
   }
+});
+$("upload-stop").addEventListener("click", () => {
+  stopIndexing = true;
+  uploadUI.set({ stage: "עוצר אחרי המסמכים שנסרקים עכשיו…", indeterminate: true });
 });
 
 /* ---------- access list (settings) ---------- */
