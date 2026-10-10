@@ -27,8 +27,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&family=Suez+One&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=36">
-<script type="module" src="app.js?v=37"></script>
+<link rel="stylesheet" href="app.css?v=37">
+<script type="module" src="app.js?v=38"></script>
 </head>
 <body>
 
@@ -596,6 +596,23 @@
     <a id="viewer-download" class="viewer-action" href="#" download>הורדה</a>
   </div>
   <div id="viewer-body" class="viewer-body"></div>
+</div>
+
+<div id="upload" class="busy" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-labelledby="upload-title" hidden>
+  <div class="upload-box">
+    <div class="upload-head">
+      <span class="upload-icon" aria-hidden="true">
+        <svg class="up-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6.5 11.5L12 6l5.5 5.5"/><path d="M5 21h14"/></svg>
+        <svg class="up-check" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 7"/></svg>
+      </span>
+      <div class="upload-text">
+        <b id="upload-title"></b>
+        <span id="upload-sub" class="upload-sub"></span>
+      </div>
+    </div>
+    <div id="upload-bar" class="upload-bar"><div></div></div>
+    <div class="upload-row"><span id="upload-stage"></span><span id="upload-pct" class="upload-pct"></span></div>
+  </div>
 </div>
 
 <div id="busy" class="busy" hidden>

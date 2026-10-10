@@ -10,7 +10,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
-import { initMedical } from "./medical.js?v=6";
+import { initMedical } from "./medical.js?v=7";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -78,6 +78,74 @@ function show(view) {
     apply();
   }
 }
+/* ---------- upload with progress ---------- */
+// קריאה לפונקציית שרת עם מעקב אחרי ההעלאה. ה-SDK של Firebase לא מדווח על התקדמות, אז שולחים את הבקשה
+// בעצמנו (אותו פרוטוקול של callable) דרך XMLHttpRequest שמדווח כמה נשלח.
+const FN_BASE = `https://europe-west1-${firebaseConfig.projectId}.cloudfunctions.net/`;
+
+function callWithProgress(name, data, onProgress, timeout = 180000) {
+  return new Promise((resolve, reject) => {
+    auth.currentUser.getIdToken().then((token) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", FN_BASE + name);
+      xhr.timeout = timeout;
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.setRequestHeader("Authorization", "Bearer " + token);
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total, false); };
+      xhr.upload.onload = () => onProgress(1, true);
+      const fail = (code, message) => reject(Object.assign(new Error(message), { code: "functions/" + code }));
+      xhr.onload = () => {
+        let body = null;
+        try { body = JSON.parse(xhr.responseText); } catch {}
+        if (xhr.status === 200 && body && "result" in body) return resolve({ data: body.result });
+        const err = body?.error;
+        fail(String(err?.status || "internal").toLowerCase().replace(/_/g, "-"), err?.message || `HTTP ${xhr.status}`);
+      };
+      xhr.onerror = () => fail("unavailable", "אין חיבור לשרת");
+      xhr.ontimeout = () => fail("deadline-exceeded", "timeout");
+      xhr.send(JSON.stringify({ data }));
+    }, reject);
+  });
+}
+
+// חלונית ההעלאה: שלב, שם הקובץ, פס התקדמות ואחוזים
+const uploadUI = {
+  open(title, sub) {
+    $("upload").hidden = false;
+    $("upload").classList.remove("done");
+    $("upload-title").textContent = title;
+    this.set({ sub, stage: "מכין את הקבצים…", frac: 0, indeterminate: true });
+  },
+  set({ sub, stage, frac, indeterminate }) {
+    if (sub !== undefined) $("upload-sub").textContent = sub || "";
+    if (stage !== undefined) $("upload-stage").textContent = stage;
+    const bar = $("upload-bar");
+    bar.classList.toggle("indeterminate", !!indeterminate);
+    if (frac !== undefined && !indeterminate) {
+      bar.firstElementChild.style.width = (frac * 100).toFixed(1) + "%";
+      $("upload-pct").textContent = Math.round(frac * 100) + "%";
+    }
+    if (indeterminate) $("upload-pct").textContent = "";
+    $("upload").setAttribute("aria-valuenow", String(Math.round((frac || 0) * 100)));
+  },
+  async done(text) {
+    $("upload").classList.add("done");
+    this.set({ stage: text || "נשמר", frac: 1, indeterminate: false });
+    $("upload-pct").textContent = "";
+    await new Promise((r) => setTimeout(r, 650));
+    this.close();
+  },
+  close() { $("upload").hidden = true; }
+};
+
+// העלאה של פריט אחד עם החלונית. from/to: איזה חלק מהפס הפריט תופס (לייבוא של כמה פריטים)
+async function uploadWithProgress(name, data, { sizeText, from = 0, to = 1, savingText = "שומר בדרייב…" } = {}) {
+  return callWithProgress(name, data, (f, finished) => {
+    if (finished) uploadUI.set({ stage: savingText, frac: to, indeterminate: to === 1 });
+    else uploadUI.set({ stage: `מעלה${sizeText ? ` (${sizeText})` : ""}…`, frac: from + (to - from) * f });
+  });
+}
+
 /* ---------- full-text search index ---------- */
 // הטקסט של כל קבלה ומסמך (מתומלל ע"י Gemini) נטען רק כשמתחילים לחפש, ונשאר מעודכן בזמן אמת
 const searchIndex = new Map();
@@ -1209,9 +1277,11 @@ form.addEventListener("submit", async (ev) => {
       location.hash = `#/r/${editingId}`;
       toast("השינויים נשמרו");
     } else {
-      busy("מעלה לדרייב ושומר…");
+      const totalSize = pendingFiles.reduce((n, x) => n + x.size, 0);
+      uploadUI.open("שומר את הקבלה", pendingFiles.length > 1 ? `${pendingFiles.length} קבצים` : pendingFiles[0]?.name);
       const files = await Promise.all(pendingFiles.map(filePayload));
-      const res = await call("saveReceipt")({ receipt, files, ai: aiResult });
+      const res = await uploadWithProgress("saveReceipt", { receipt, files, ai: aiResult }, { sizeText: fmtSize(totalSize) });
+      await uploadUI.done("הקבלה נשמרה");
       indexInBackground("receipts", res.data.id);
       pendingFiles.forEach((x) => !x.bulk && x.previewUrl && URL.revokeObjectURL(x.previewUrl));
       pendingFiles = [];
@@ -1235,6 +1305,7 @@ form.addEventListener("submit", async (ev) => {
     err.hidden = false;
   } finally {
     busy(null);
+    uploadUI.close();
     $("btn-save").disabled = false;
   }
 });
@@ -1629,18 +1700,19 @@ $("add-file-input").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   e.target.value = "";
   if (!file || !detailId) return;
-  busy("מעלה לדרייב…");
+  uploadUI.open("מוסיף קובץ", file.name);
   try {
     const prepared = await prepareFile(file, $("add-file-kind").value);
     if (prepared.size > MAX_TOTAL_BYTES) throw new Error("הקובץ גדול מדי (עד 7MB)");
-    await call("addFile")({ receiptId: detailId, file: await filePayload(prepared) });
+    await uploadWithProgress("addFile", { receiptId: detailId, file: await filePayload(prepared) }, { sizeText: fmtSize(prepared.size) });
+    await uploadUI.done("הקובץ נוסף");
     indexInBackground("receipts", detailId);
     if (prepared.previewUrl) URL.revokeObjectURL(prepared.previewUrl);
     toast("הקובץ נוסף");
   } catch (err) {
     toast(err.code ? errMsg(err) : err.message);
   } finally {
-    busy(null);
+    uploadUI.close();
   }
 });
 
@@ -2156,15 +2228,17 @@ $("bulk-save-all").addEventListener("click", async () => {
   if (!ready.length || bulkSaving) return;
   bulkSaving = true;
   renderBulk();
-  for (const item of ready) {
+  uploadUI.open(ready.length === 1 ? "שומר קבלה אחת" : `שומר ${ready.length} קבלות`, "");
+  for (const [n, item] of ready.entries()) {
     item.status = "saving";
     renderBulk();
+    uploadUI.set({ sub: `${n + 1} מתוך ${ready.length}: ${mainItem(item.ai.items)?.name || item.title}` });
     try {
-      const res = await call("saveReceipt")({
+      const res = await uploadWithProgress("saveReceipt", {
         receipt: receiptFromAi(item.ai),
         files: [await filePayload(item.file)],
         ai: item.ai
-      });
+      }, { sizeText: fmtSize(item.file.size), from: n / ready.length, to: (n + 1) / ready.length, savingText: `שומר בדרייב (${n + 1}/${ready.length})…` });
       indexInBackground("receipts", res.data.id);
       item.status = "saved";
       item.savedId = res.data.id;
@@ -2178,6 +2252,7 @@ $("bulk-save-all").addEventListener("click", async () => {
   bulkSaving = false;
   renderBulk();
   const saved = ready.filter((b) => b.status === "saved").length;
+  if (saved) await uploadUI.done(saved === 1 ? "הקבלה נשמרה" : `${saved} קבלות נשמרו`); else uploadUI.close();
   finishBulkIfDone(saved);
 });
 
@@ -2375,7 +2450,7 @@ document.addEventListener("touchend", (e) => {
 const medical = initMedical({
   db, call, $, el, toast, busy, show, currentView, errMsg, norm,
   toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile, withYearDividers,
-  ensureSearchIndex, textSnippet, snippetEl, indexInBackground,
+  ensureSearchIndex, textSnippet, snippetEl, indexInBackground, uploadUI, uploadWithProgress,
   MAX_TOTAL_BYTES, setupBulkSources, isAdmin: () => isAdmin, driveConnected: () => (driveCfg ? !!driveCfg.connected : true)
 });
 

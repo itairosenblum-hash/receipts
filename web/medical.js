@@ -60,7 +60,7 @@ export function initMedical(ctx) {
   const {
     db, call, $, el, toast, busy, show, currentView, errMsg, norm,
     toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile, withYearDividers,
-    ensureSearchIndex, textSnippet, snippetEl, indexInBackground,
+    ensureSearchIndex, textSnippet, snippetEl, indexInBackground, uploadUI, uploadWithProgress,
     MAX_TOTAL_BYTES, setupBulkSources, isAdmin, driveConnected
   } = ctx;
 
@@ -447,9 +447,11 @@ export function initMedical(ctx) {
         location.hash = `#/m/d/${editingId}`;
         toast("השינויים נשמרו");
       } else {
-        busy("מעלה לדרייב ושומר…");
+        const totalSize = pendingFiles.reduce((n, x) => n + x.size, 0);
+        uploadUI.open("שומר את המסמך", pendingFiles.length > 1 ? `${pendingFiles.length} עמודים` : pendingFiles[0]?.name);
         const files = await Promise.all(pendingFiles.map(filePayload));
-        const res = await call("saveMedical")({ doc: payload, files });
+        const res = await uploadWithProgress("saveMedical", { doc: payload, files }, { sizeText: fmtSize(totalSize) });
+        await uploadUI.done("המסמך נשמר");
         indexInBackground("medical", res.data.id);
         const fromBulk = bulkItems.find((b) => b.id === bulkEditId);
         pendingFiles.forEach((x) => x !== fromBulk?.file && x.previewUrl && URL.revokeObjectURL(x.previewUrl));
@@ -473,6 +475,7 @@ export function initMedical(ctx) {
       err.hidden = false;
     } finally {
       busy(null);
+      uploadUI.close();
       $("med-btn-save").disabled = false;
     }
   });
@@ -571,18 +574,19 @@ export function initMedical(ctx) {
     const file = e.target.files[0];
     e.target.value = "";
     if (!file || !detailId) return;
-    busy("מעלה לדרייב…");
+    uploadUI.open("מוסיף עמוד", file.name);
     try {
       const prepared = await prepareFile(file, "document");
       if (prepared.size > MAX_TOTAL_BYTES) throw new Error("הקובץ גדול מדי (עד 7MB)");
-      await call("addMedicalFile")({ id: detailId, file: await filePayload(prepared) });
+      await uploadWithProgress("addMedicalFile", { id: detailId, file: await filePayload(prepared) }, { sizeText: fmtSize(prepared.size) });
+      await uploadUI.done("העמוד נוסף");
       indexInBackground("medical", detailId);
       if (prepared.previewUrl) URL.revokeObjectURL(prepared.previewUrl);
       toast("הקובץ נוסף");
     } catch (err) {
       toast(err.code ? errMsg(err) : err.message);
     } finally {
-      busy(null);
+      uploadUI.close();
     }
   });
 
@@ -767,11 +771,14 @@ export function initMedical(ctx) {
     if (!ready.length || bulkSaving) return;
     bulkSaving = true;
     renderBulk();
-    for (const item of ready) {
+    uploadUI.open(ready.length === 1 ? "שומר מסמך אחד" : `שומר ${ready.length} מסמכים`, "");
+    for (const [n, item] of ready.entries()) {
       item.status = "saving";
       renderBulk();
+      uploadUI.set({ sub: `${n + 1} מתוך ${ready.length}: ${item.ai.title || item.title}` });
       try {
-        const res = await call("saveMedical")({ doc: docFromAi(item.ai, item), files: [await filePayload(item.file)] });
+        const res = await uploadWithProgress("saveMedical", { doc: docFromAi(item.ai, item), files: [await filePayload(item.file)] },
+          { sizeText: fmtSize(item.file.size), from: n / ready.length, to: (n + 1) / ready.length, savingText: `שומר בדרייב (${n + 1}/${ready.length})…` });
         indexInBackground("medical", res.data.id);
         item.status = "saved";
         item.savedId = res.data.id;
@@ -784,7 +791,9 @@ export function initMedical(ctx) {
     }
     bulkSaving = false;
     renderBulk();
-    finishBulkIfDone(ready.filter((b) => b.status === "saved").length);
+    const saved = ready.filter((b) => b.status === "saved").length;
+    if (saved) await uploadUI.done(saved === 1 ? "המסמך נשמר" : `${saved} מסמכים נשמרו`); else uploadUI.close();
+    finishBulkIfDone(saved);
   });
 
   const BULK_STATUS = {
