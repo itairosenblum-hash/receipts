@@ -683,3 +683,15 @@ html[data-area="med"] { --sh: 28, 61, 120; }
 @keyframes wheel-open { from { transform: rotate(-270deg); } }
 @media (prefers-reduced-motion: reduce) { .dial-login .wheel { animation: none; } }
 .dial.dial-login { position: relative; inset: auto; top: auto; width: 210px; height: 210px; }
+
+/* קו מפריד בין שנים ברשימות */
+.year-divider {
+  display: flex; align-items: center; gap: 12px; margin: 10px 2px 2px;
+  color: color-mix(in srgb, var(--hero) 70%, var(--muted));
+}
+.year-divider::before, .year-divider::after {
+  content: ""; flex: 1; height: 1px;
+  background: linear-gradient(to left, transparent, color-mix(in srgb, var(--hero) 30%, transparent));
+}
+.year-divider::after { background: linear-gradient(to right, transparent, color-mix(in srgb, var(--hero) 30%, transparent)); }
+.year-divider span { font-family: 'Suez One', 'Rubik', serif; font-size: 18px; letter-spacing: .5px; }

@@ -59,7 +59,7 @@ const specName = (id) => SPECIALTIES[id]?.name || "";
 export function initMedical(ctx) {
   const {
     db, call, $, el, toast, busy, show, currentView, errMsg, norm,
-    toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile,
+    toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile, withYearDividers,
     MAX_TOTAL_BYTES, setupBulkSources, isAdmin, driveConnected
   } = ctx;
 
@@ -169,7 +169,7 @@ export function initMedical(ctx) {
     $("med-members-banner").hidden = members.length > 0;
     $("med-drive-banner").hidden = driveConnected();
 
-    $("med-list").replaceChildren(...list.map((d) => el("a", { class: "receipt", href: `#/m/d/${d.id}` },
+    $("med-list").replaceChildren(...withYearDividers(list, (d) => toDate(d.date), (d) => el("a", { class: "receipt", href: `#/m/d/${d.id}` },
       docBadge(d),
       el("div", { class: "receipt-main" },
         el("div", { class: "receipt-title", text: d.title || DOC_TYPES[d.docType] || "מסמך" }),

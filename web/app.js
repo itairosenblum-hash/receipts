@@ -10,7 +10,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
-import { initMedical } from "./medical.js?v=4";
+import { initMedical } from "./medical.js?v=5";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -78,6 +78,23 @@ function show(view) {
     apply();
   }
 }
+/* ---------- year dividers in the lists ---------- */
+
+// מוסיף קו מפריד עם השנה בכל מעבר שנה ברשימה (הרשימות ממוינות מהחדש לישן). כשהכל מאותה שנה, אין קו.
+function withYearDividers(list, dateOf, render) {
+  const years = list.map((x) => dateOf(x)?.getFullYear() || null);
+  const multi = new Set(years.filter(Boolean)).size > 1;
+  const out = [];
+  list.forEach((x, i) => {
+    if (multi && years[i] && years[i] !== years[i - 1]) {
+      out.push(el("div", { class: "year-divider", role: "separator", "aria-label": `שנת ${years[i]}` },
+        el("span", { text: String(years[i]) })));
+    }
+    out.push(render(x));
+  });
+  return out;
+}
+
 /* ---------- vault dial (decoration in the list headers and the login screen) ---------- */
 
 // חוגה של כספת: טבעת עם שנתות, טבעת פנימית וכפתור עם חריצי אחיזה. מצוירת פעם אחת לכל מקום שצריך
@@ -645,7 +662,7 @@ function renderReceipts() {
     : `נמצאו ${dupCount} קבלות שנראות כפולות`;
   $("dup-banner-btn").textContent = showingDups ? "הצגת הכל" : "הצגה";
 
-  $("receipts").replaceChildren(...list.map((r) => {
+  $("receipts").replaceChildren(...withYearDividers(list, (r) => toDate(r.purchaseDate), (r) => {
     const w = warrantyInfo(r);
     const items = itemsOf(r);
     return el("a", { class: "receipt", href: `#/r/${r.id}` },
@@ -2162,7 +2179,7 @@ document.addEventListener("touchend", (e) => {
 
 const medical = initMedical({
   db, call, $, el, toast, busy, show, currentView, errMsg, norm,
-  toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile,
+  toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile, withYearDividers,
   MAX_TOTAL_BYTES, setupBulkSources, isAdmin: () => isAdmin, driveConnected: () => (driveCfg ? !!driveCfg.connected : true)
 });
 
