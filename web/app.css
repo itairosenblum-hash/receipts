@@ -526,7 +526,7 @@ body { background: var(--bg); transition: background-color .35s ease; }
   display: flex; flex-direction: column; gap: 14px;
   view-transition-name: hero;
 }
-.hero > :not(.dial) { position: relative; z-index: 1; }
+.hero > :not(.dial):not(.hero-art) { position: relative; z-index: 1; }
 .hero .app-header h1 { color: #fff; font-size: 30px; }
 .hero .icon-btn, .hero .refresh-btn { color: #fff; }
 .hero .refresh-btn:active { background: rgba(255,255,255,.14); }
@@ -586,3 +586,67 @@ body { background: var(--bg); transition: background-color .35s ease; }
 .filter-chip.active { background: var(--hero); border-color: var(--hero); }
 .login-hero p { max-width: 300px; }
 .hero + .search { view-transition-name: area-search; }
+
+/* צללית ברצועת הכותרת: עגלת קניות בקבלות, סטטוסקופ ברפואי */
+.hero-art {
+  position: absolute; z-index: 0; width: 230px; height: 230px;
+  inset-inline-end: -36px; top: 10px;
+  color: #fff; opacity: .13; pointer-events: none;
+  transform: rotate(-10deg);
+  view-transition-name: hero-art;
+}
+.med .hero-art { transform: rotate(-14deg); top: -46px; inset-inline-end: -6px; width: 250px; height: 250px; }
+::view-transition-old(hero-art) { animation: art-out .3s ease-in both; }
+::view-transition-new(hero-art) { animation: art-in .5s .1s cubic-bezier(.3, 1.3, .5, 1) both; }
+::view-transition-group(hero-art) { animation: none; }
+@keyframes art-out { to { opacity: 0; transform: scale(.85) rotate(-20deg); } }
+@keyframes art-in { from { opacity: 0; transform: scale(.85) rotate(20deg); } }
+
+/* ===================== עומק: צלליות שכבתיות בגוון של האזור ===================== */
+:root { --sh: 14, 77, 71; }
+html[data-area="med"] { --sh: 28, 61, 120; }
+
+.hero { box-shadow: 0 14px 34px -14px rgba(var(--sh), .55); }
+.hero .app-header h1 { text-shadow: 0 2px 6px rgba(0,0,0,.22); }
+.hero + .search { box-shadow: 0 1px 2px rgba(var(--sh), .08), 0 10px 28px -8px rgba(var(--sh), .28); }
+.tab-pill, .hero .tab-pill, .hero .tabs[data-active="med"] .tab-pill { box-shadow: 0 1px 1px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.24); }
+.hero .tabs { box-shadow: inset 0 2px 5px rgba(0,0,0,.22); }
+
+/* כרטיסים מורמים: צל קרוב וחד + צל רחוק ורך */
+.receipt, .bulk-item, .card, .dup-card {
+  border-color: rgba(255,255,255,.6);
+  box-shadow: 0 1px 1px rgba(var(--sh), .05), 0 2px 5px rgba(var(--sh), .06), 0 12px 24px -10px rgba(var(--sh), .2);
+}
+.receipt { transition: transform .12s ease, box-shadow .12s ease; }
+.receipt:active { transform: translateY(1px) scale(.99); box-shadow: 0 1px 2px rgba(var(--sh), .1), 0 4px 10px -6px rgba(var(--sh), .2); }
+.item-card, .file-item { box-shadow: 0 1px 2px rgba(var(--sh), .06); }
+
+/* אייקונים כמו אריחים: הבהרה למעלה, הצללה למטה */
+.cat-badge {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.75), inset 0 -2px 0 rgba(0,0,0,.07), 0 3px 8px -3px rgba(0,0,0,.18);
+}
+#detail-category .cat-badge, .type-pill .cat-badge { box-shadow: none; }
+
+/* כפתורים ושבבים */
+.btn-primary {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 5px 12px -4px color-mix(in srgb, var(--accent) 60%, transparent);
+  transition: transform .1s ease, box-shadow .1s ease;
+}
+.btn-primary:active { transform: translateY(1px); box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 2px 5px -2px color-mix(in srgb, var(--accent) 60%, transparent); }
+.btn-secondary, .filter-chip, .field input, .field select, .field textarea, .add-file select {
+  box-shadow: 0 1px 2px rgba(var(--sh), .07);
+}
+.btn-secondary:active, .filter-chip:active { transform: translateY(1px); box-shadow: none; }
+.filter-chip.active { box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 5px 12px -4px color-mix(in srgb, var(--hero) 65%, transparent); }
+.fab {
+  background-image: linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,0) 60%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 4px 8px -2px color-mix(in srgb, var(--hero) 40%, transparent), 0 14px 28px -8px color-mix(in srgb, var(--hero) 55%, transparent);
+  transition: transform .12s ease;
+}
+.fab:active { transform: translateY(2px) scale(.97); }
+.pick-pop { box-shadow: 0 2px 4px rgba(var(--sh), .08), 0 18px 40px -10px rgba(var(--sh), .35); }
+.toast { box-shadow: 0 10px 30px -8px rgba(0,0,0,.4); }
+.busy-box { box-shadow: 0 20px 50px -12px rgba(0,0,0,.4); }
+/* מקום לצל של השבבים בתוך שורה שגוללת לרוחב */
+.chip-row:not(.wrap) { padding: 4px 4px 12px; margin: -4px -4px -12px; }
+.med .hero-art { inset-inline-end: -70px; top: -40px; }
