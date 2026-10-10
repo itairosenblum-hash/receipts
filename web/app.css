@@ -676,3 +676,10 @@ html[data-area="med"] { --sh: 28, 61, 120; }
 .contact-busy { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); padding: 8px 4px; }
 .contact-research { align-self: flex-start; padding: 0 4px; }
 .contact-value[dir="ltr"] { text-align: right; unicode-bidi: isolate; }
+
+/* מסך הכניסה: דלת כספת, הגלגל מסתובב פעם אחת */
+.dial-login { animation: none; opacity: .95; }
+.dial-login .wheel { transform-origin: 0 0; transform-box: view-box; animation: wheel-open 1.8s cubic-bezier(.2, .8, .2, 1) .15s both; }
+@keyframes wheel-open { from { transform: rotate(-270deg); } }
+@media (prefers-reduced-motion: reduce) { .dial-login .wheel { animation: none; } }
+.dial.dial-login { position: relative; inset: auto; top: auto; width: 210px; height: 210px; }

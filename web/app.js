@@ -82,21 +82,16 @@ function show(view) {
 
 // חוגה של כספת: טבעת עם שנתות, טבעת פנימית וכפתור עם חריצי אחיזה. מצוירת פעם אחת לכל מקום שצריך
 function makeDial() {
-  const ticks = [];
-  for (let i = 0; i < 60; i++) {
-    const a = (i * 6 * Math.PI) / 180, long = i % 5 === 0;
-    const r1 = long ? 118 : 128, r2 = 140;
-    ticks.push(`<line x1="${(Math.sin(a) * r1).toFixed(1)}" y1="${(-Math.cos(a) * r1).toFixed(1)}" x2="${(Math.sin(a) * r2).toFixed(1)}" y2="${(-Math.cos(a) * r2).toFixed(1)}" stroke-width="${long ? 3 : 1.5}"/>`);
-  }
-  const grips = [];
-  for (let i = 0; i < 24; i++) {
-    const a = (i * 15 * Math.PI) / 180;
-    grips.push(`<line x1="${(Math.sin(a) * 58).toFixed(1)}" y1="${(-Math.cos(a) * 58).toFixed(1)}" x2="${(Math.sin(a) * 70).toFixed(1)}" y2="${(-Math.cos(a) * 70).toFixed(1)}" stroke-width="3"/>`);
-  }
-  return `<svg viewBox="-150 -150 300 300" fill="none" stroke="currentColor" stroke-linecap="round">
-    <circle r="146" stroke-width="2"/>${ticks.join("")}
-    <circle r="104" stroke-width="2"/><circle r="74" stroke-width="2"/>${grips.join("")}
-    <circle r="20" stroke-width="3"/><path d="M0 -104 L0 -84" stroke-width="5"/>
+  // דלת כספת: טבעת עם ברגים וגלגל ידית. במסך הכניסה הגלגל מסתובב, כמו בפתיחת הכספת
+  const pt = (deg, r) => [Math.sin((deg * Math.PI) / 180) * r, -Math.cos((deg * Math.PI) / 180) * r].map((n) => n.toFixed(1));
+  const bolts = Array.from({ length: 8 }, (_, i) => { const [x, y] = pt(i * 45 + 22.5, 142); return `<circle cx="${x}" cy="${y}" r="11" fill="currentColor" stroke="none"/>`; }).join("");
+  const spokes = [0, 90, 180, 270].map((a) => {
+    const [x1, y1] = pt(a, 40), [x2, y2] = pt(a, 96), [cx, cy] = pt(a, 100);
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="18"/><circle cx="${cx}" cy="${cy}" r="17" fill="currentColor" stroke="none"/>`;
+  }).join("");
+  return `<svg viewBox="-190 -190 380 380" fill="none" stroke="currentColor" stroke-linecap="round">
+    <circle r="172" stroke-width="12"/>${bolts}<circle r="118" stroke-width="7" stroke-opacity=".5"/>
+    <g class="wheel">${spokes}<circle r="40" fill="rgba(255,255,255,.14)" stroke-width="12"/><circle r="12" fill="currentColor" stroke="none"/></g>
   </svg>`;
 }
 document.querySelectorAll(".dial").forEach((d) => { d.innerHTML = makeDial(); });
