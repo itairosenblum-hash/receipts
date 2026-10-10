@@ -10,7 +10,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
-import { initMedical } from "./medical.js?v=8";
+import { initMedical } from "./medical.js?v=9";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -227,20 +227,93 @@ function makeRowCard(listKey, id, rowEl, buildPreview) {
   return card;
 }
 
-// שורות מתוך הטקסט שנסרק מהמסמך
+// שורות מתוך הטקסט שנסרק מהמסמך. מסמך שעוד לא נסרק נסרק מיד כשפותחים אותו, והטקסט מופיע כשהסריקה מסתיימת
+const indexRequested = new Set();
 function previewTextEl(kind, id) {
   if (!searchIndexLoaded) return el("div", { class: "pv-text muted", text: "טוען תוכן…" });
   const ix = searchIndex.get(`${kind}_${id}`);
-  if (!ix) return el("div", { class: "pv-text muted", text: "התוכן של המסמך עוד לא נסרק." });
-  if (!ix.text) return null;
+  if (!ix) {
+    const key = `${kind}_${id}`;
+    if (!indexRequested.has(key)) {
+      indexRequested.add(key);
+      call("indexDoc", 300000)({ kind, id }).catch((e) => { console.warn("index failed", e); indexRequested.delete(key); });
+    }
+    return el("div", { class: "pv-text muted pv-scanning" }, el("span", { class: "spinner small" }), "קורא את תוכן המסמך…");
+  }
+  if (!ix.text) return ix.failed ? el("div", { class: "pv-text muted", text: "לא הצלחנו לקרוא את תוכן המסמך." }) : null;
   return el("div", { class: "pv-text" }, el("span", { class: "pv-quote", "aria-hidden": "true", text: "”" }), ix.text.slice(0, 320));
 }
 
-function previewActions(openHref, onViewFile, viewLabel) {
+const SHARE_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>';
+
+function previewActions(openHref, onViewFile, viewLabel, share) {
+  const shareBtn = share && el("button", { type: "button", class: "btn-secondary pv-btn pv-icon", "aria-label": "שיתוף", title: "שיתוף" });
+  if (shareBtn) {
+    shareBtn.innerHTML = SHARE_ICON + '<span class="spinner small" aria-hidden="true"></span>';
+    shareBtn.addEventListener("click", () => shareFromButton(shareBtn, share));
+  }
   return el("div", { class: "pv-actions" },
     el("a", { class: "btn-primary pv-btn", href: openHref, text: "פתיחה" }),
-    onViewFile && el("button", { type: "button", class: "btn-secondary pv-btn", text: viewLabel, onclick: onViewFile })
+    onViewFile && el("button", { type: "button", class: "btn-secondary pv-btn", text: viewLabel, onclick: onViewFile }),
+    shareBtn
   );
+}
+
+// שיתוף הקבצים עצמם דרך חלון השיתוף של המכשיר. share: { getFiles, title, text }
+// דפדפנים פותחים חלון שיתוף רק מיד אחרי לחיצה; אם ההורדה ארכה, הכפתור נצבע ומבקש לחיצה נוספת
+async function shareFromButton(btn, share) {
+  if (btn._ready) {
+    const p = btn._ready;
+    btn._ready = null;
+    btn.classList.remove("ready");
+    return shareFiles(p);
+  }
+  if (btn.classList.contains("waiting")) return;
+  btn.classList.add("waiting");
+  try {
+    const p = { files: await share.getFiles(), title: share.title, text: share.text };
+    if (navigator.userActivation?.isActive) await shareFiles(p);
+    else {
+      btn._ready = p;
+      btn.classList.add("ready");
+      toast("הקובץ מוכן. לחצו שוב על השיתוף");
+    }
+  } catch (e) {
+    toast(errMsg(e));
+  } finally {
+    btn.classList.remove("waiting");
+  }
+}
+
+async function shareFiles(p) {
+  try {
+    if (p.files.length && navigator.canShare?.({ files: p.files })) {
+      await navigator.share({ files: p.files, title: p.title, text: p.text });
+    } else if (navigator.share) {
+      await navigator.share({ title: p.title, text: p.text });
+      toast("הדפדפן לא תומך בשיתוף קבצים, נשלח רק הטקסט");
+    } else {
+      p.files.forEach((f) => {
+        const a = el("a", { href: URL.createObjectURL(f), download: f.name });
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      });
+      toast("הקבצים הורדו למכשיר");
+    }
+  } catch (e) {
+    if (e.name !== "AbortError") toast("השיתוף נכשל");
+  }
+}
+
+// מוריד קבצים של מסמך מהשרת כקבצים לשיתוף
+async function fetchShareFiles(fnName, idArgs, files) {
+  const out = [];
+  for (const f of files.slice(0, 5)) {
+    const res = await call(fnName, 60000)({ ...idArgs, driveFileId: f.driveFileId });
+    const bytes = Uint8Array.from(atob(res.data.data), (c) => c.charCodeAt(0));
+    out.push(new File([bytes], f.name, { type: res.data.mimeType }));
+  }
+  return out;
 }
 
 function receiptPreview(r) {
@@ -262,7 +335,15 @@ function receiptPreview(r) {
       r.notes && el("div", { class: "pv-notes", text: r.notes })
     ),
     previewTextEl("receipts", r.id),
-    previewActions(`#/r/${r.id}`, (r.files || []).length ? () => openFile(r.id, (r.files.find((f) => f.kind === "receipt") || r.files[0])) : null, "צפייה בקבלה")
+    previewActions(`#/r/${r.id}`, (r.files || []).length ? () => openFile(r.id, (r.files.find((f) => f.kind === "receipt") || r.files[0])) : null, "צפייה",
+      (r.files || []).length && {
+        title: mainItem(items)?.name || "קבלה",
+        text: receiptSummary(r),
+        getFiles: () => {
+          const wanted = r.files.filter((f) => f.kind === "receipt");
+          return fetchShareFiles("getFile", { receiptId: r.id }, (wanted.length ? wanted : r.files).slice(0, 3));
+        }
+      })
   ];
 }
 
@@ -758,7 +839,14 @@ function startApp({ keepView = false } = {}) {
   medical.start(unsubs);
   listenForeground();
   // השלמה שקטה של תמלול למסמכים ישנים או כאלה שפוספסו (עד 8 בכל פתיחה)
-  if (!keepView) setTimeout(() => call("indexPending", 540000)({}).catch(() => {}), 8000);
+  if (!keepView) setTimeout(async () => {
+    for (let round = 0; round < 6; round++) {
+      try {
+        const res = await call("indexPending", 540000)({});
+        if (!res.data.remaining || !res.data.done) break;
+      } catch { break; }
+    }
+  }, 8000);
 
   unsubs.push(onSnapshot(accessRef, renderAccess, (e) => {
     console.error(e);
@@ -2531,7 +2619,7 @@ const medical = initMedical({
   db, call, $, el, toast, busy, show, currentView, errMsg, norm,
   toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile, withYearDividers,
   ensureSearchIndex, textSnippet, snippetEl, indexInBackground, uploadUI, uploadWithProgress,
-  makeRowCard, previewTextEl, previewActions,
+  makeRowCard, previewTextEl, previewActions, fetchShareFiles,
   MAX_TOTAL_BYTES, setupBulkSources, isAdmin: () => isAdmin, driveConnected: () => (driveCfg ? !!driveCfg.connected : true)
 });
 

@@ -61,7 +61,7 @@ export function initMedical(ctx) {
     db, call, $, el, toast, busy, show, currentView, errMsg, norm,
     toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile, withYearDividers,
     ensureSearchIndex, textSnippet, snippetEl, indexInBackground, uploadUI, uploadWithProgress,
-    makeRowCard, previewTextEl, previewActions,
+    makeRowCard, previewTextEl, previewActions, fetchShareFiles,
     MAX_TOTAL_BYTES, setupBulkSources, isAdmin, driveConnected
   } = ctx;
 
@@ -205,7 +205,8 @@ export function initMedical(ctx) {
         d.notes && el("div", { class: "pv-notes", text: d.notes })
       ),
       previewTextEl("medical", d.id),
-      previewActions(`#/m/d/${d.id}`, pages ? () => openFile(d.id, d.files[0]) : null, pages > 1 ? `צפייה (${pages} עמודים)` : "צפייה במסמך")
+      previewActions(`#/m/d/${d.id}`, pages ? () => openFile(d.id, d.files[0]) : null, "צפייה",
+        pages && { title: d.title, getFiles: () => fetchShareFiles("getMedicalFile", { id: d.id }, d.files) })
     ];
   }
 

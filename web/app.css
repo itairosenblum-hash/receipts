@@ -785,3 +785,12 @@ html[data-area="med"] #upload { --accent: #2F5DA8; --accent-tint: #E2EAF7; --acc
 .pv-btn { height: 42px; font-size: 15px; flex: 1; }
 .pv-actions .pv-btn:first-child { flex: 0 0 34%; }
 @media (prefers-reduced-motion: reduce) { .row-preview, .row-preview-inner { transition: none; } }
+
+.pv-icon { flex: 0 0 46px !important; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.pv-icon .spinner { display: none; }
+.pv-icon.waiting svg { display: none; }
+.pv-icon.waiting .spinner { display: inline-block; }
+.pv-icon.ready { background: var(--accent); color: #fff; border-color: var(--accent); animation: pv-pulse 1s ease-in-out infinite; }
+@keyframes pv-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent); } }
+.pv-scanning { display: flex !important; align-items: center; gap: 8px; }
+.pv-btn { white-space: nowrap; }
