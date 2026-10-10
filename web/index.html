@@ -27,8 +27,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&family=Suez+One&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=34">
-<script type="module" src="app.js?v=35"></script>
+<link rel="stylesheet" href="app.css?v=35">
+<script type="module" src="app.js?v=36"></script>
 </head>
 <body>
 
@@ -548,6 +548,13 @@
       <button type="submit" class="btn-primary">הוספה</button>
     </form>
     <a id="med-folder-link" href="#" target="_blank" rel="noopener" hidden>פתיחת תיקיית המסמכים הרפואיים בדרייב</a>
+  </div>
+
+  <div class="card" id="search-card">
+    <h2>חיפוש בתוך המסמכים</h2>
+    <p class="muted">החיפוש מוצא מילים גם מתוך התוכן של הקבלות והמסמכים, למשל שם תרופה או בדיקה. כל מסמך חדש נסרק לבד אחרי השמירה.</p>
+    <p id="search-status" class="strong-soft"></p>
+    <button id="btn-index-all" class="btn-secondary" type="button" hidden></button>
   </div>
 
   <div class="card" id="share-app-card">

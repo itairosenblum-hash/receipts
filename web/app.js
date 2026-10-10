@@ -10,7 +10,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
-import { initMedical } from "./medical.js?v=5";
+import { initMedical } from "./medical.js?v=6";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -78,6 +78,46 @@ function show(view) {
     apply();
   }
 }
+/* ---------- full-text search index ---------- */
+// הטקסט של כל קבלה ומסמך (מתומלל ע"י Gemini) נטען רק כשמתחילים לחפש, ונשאר מעודכן בזמן אמת
+const searchIndex = new Map();
+let searchIndexUnsub = null;
+let searchIndexLoaded = false;
+const normSearch = (s) => String(s || "").toLowerCase().replace(/[\u0591-\u05C7]/g, "").replace(/\s+/g, " ").trim();
+
+function ensureSearchIndex() {
+  if (searchIndexUnsub || !allowed) return;
+  searchIndexUnsub = onSnapshot(collection(db, "searchIndex"), (snap) => {
+    searchIndex.clear();
+    snap.docs.forEach((d) => searchIndex.set(d.id, d.data()));
+    searchIndexLoaded = true;
+    renderReceipts();
+    medical.refresh();
+    if (currentView() === "settings") renderSearchStatus();
+  }, (e) => console.error(e));
+  unsubs.push(() => { searchIndexUnsub?.(); searchIndexUnsub = null; searchIndexLoaded = false; });
+}
+
+// קטע קצר מתוך הטקסט סביב מילת החיפוש, או null אם אין התאמה
+function textSnippet(kind, id, term) {
+  const t = normSearch(term);
+  if (t.length < 2) return null;
+  const text = searchIndex.get(`${kind}_${id}`)?.text || "";
+  const i = text.indexOf(t);
+  if (i < 0) return null;
+  const start = Math.max(0, i - 28), end = Math.min(text.length, i + t.length + 36);
+  return { before: (start ? "…" : "") + text.slice(start, i), match: text.slice(i, i + t.length), after: text.slice(i + t.length, end) + (end < text.length ? "…" : "") };
+}
+
+function snippetEl(sn) {
+  return sn && el("div", { class: "snippet" }, sn.before, el("mark", { text: sn.match }), sn.after);
+}
+
+// תמלול ברקע אחרי שמירה או שינוי קבצים; לא מעכב את המשתמש
+function indexInBackground(kind, id) {
+  call("indexDoc", 300000)({ kind, id }).catch((e) => console.warn("index failed", e));
+}
+
 /* ---------- year dividers in the lists ---------- */
 
 // מוסיף קו מפריד עם השנה בכל מעבר שנה ברשימה (הרשימות ממוינות מהחדש לישן). כשהכל מאותה שנה, אין קו.
@@ -569,6 +609,8 @@ function startApp({ keepView = false } = {}) {
 
   medical.start(unsubs);
   listenForeground();
+  // השלמה שקטה של תמלול למסמכים ישנים או כאלה שפוספסו (עד 8 בכל פתיחה)
+  if (!keepView) setTimeout(() => call("indexPending", 540000)({}).catch(() => {}), 8000);
 
   unsubs.push(onSnapshot(accessRef, renderAccess, (e) => {
     console.error(e);
@@ -632,8 +674,8 @@ function renderReceipts() {
     if (cat && r.categoryId !== cat) return false;
     if (year && String(receiptYear(r)) !== year) return false;
     if (!term) return true;
-    return [...itemsOf(r).flatMap((it) => [it.name, it.printedName, it.serialNumber]), r.store, categoryName(r.categoryId), ...(r.tags || [])]
-      .filter(Boolean).some((s) => String(s).toLowerCase().includes(term));
+    return [...itemsOf(r).flatMap((it) => [it.name, it.printedName, it.serialNumber]), r.store, categoryName(r.categoryId), ...(r.tags || []), r.notes]
+      .filter(Boolean).some((s) => String(s).toLowerCase().includes(term)) || !!textSnippet("receipts", r.id, term);
   });
   const list = base.filter((r) => matchesBucket(r, listFilter));
 
@@ -676,7 +718,8 @@ function renderReceipts() {
         (w || dupMap.has(r.id)) && el("div", { class: "tag-row" },
           w && el("span", { class: "tag tag-" + w.cls, text: w.text }),
           dupMap.has(r.id) && el("span", { class: "tag tag-dup", text: "כפולה?" })
-        )
+        ),
+        term && snippetEl(textSnippet("receipts", r.id, term))
       ),
       el("div", { class: "receipt-amount", text: fmtAmount(r.amount, r.currency || "ILS") })
     );
@@ -701,7 +744,7 @@ $("dup-banner-btn").addEventListener("click", () => {
 });
 $("filter-year").addEventListener("change", renderReceipts);
 
-$("search").addEventListener("input", renderReceipts);
+$("search").addEventListener("input", () => { if ($("search").value.trim()) ensureSearchIndex(); renderReceipts(); });
 
 /* ---------- new / edit ---------- */
 
@@ -1169,6 +1212,7 @@ form.addEventListener("submit", async (ev) => {
       busy("מעלה לדרייב ושומר…");
       const files = await Promise.all(pendingFiles.map(filePayload));
       const res = await call("saveReceipt")({ receipt, files, ai: aiResult });
+      indexInBackground("receipts", res.data.id);
       pendingFiles.forEach((x) => !x.bulk && x.previewUrl && URL.revokeObjectURL(x.previewUrl));
       pendingFiles = [];
       const fromBulk = bulkItems.find((b) => b.id === bulkEditId);
@@ -1471,6 +1515,7 @@ async function removeFile(receiptId, f) {
   busy("מוחק…");
   try {
     await call("removeFile")({ receiptId, driveFileId: f.driveFileId });
+    indexInBackground("receipts", receiptId);
     toast("הקובץ נמחק");
   } catch (e) {
     toast(errMsg(e));
@@ -1488,6 +1533,7 @@ $("add-file-input").addEventListener("change", async (e) => {
     const prepared = await prepareFile(file, $("add-file-kind").value);
     if (prepared.size > MAX_TOTAL_BYTES) throw new Error("הקובץ גדול מדי (עד 7MB)");
     await call("addFile")({ receiptId: detailId, file: await filePayload(prepared) });
+    indexInBackground("receipts", detailId);
     if (prepared.previewUrl) URL.revokeObjectURL(prepared.previewUrl);
     toast("הקובץ נוסף");
   } catch (err) {
@@ -1747,6 +1793,53 @@ $("btn-notify-test").addEventListener("click", async () => {
   }
 });
 
+/* ---------- full-text search status (settings) ---------- */
+
+let indexingAll = false;
+async function renderSearchStatus() {
+  const status = $("search-status"), btn = $("btn-index-all");
+  if (indexingAll) return;
+  try {
+    const res = await call("indexPending", 60000)({ dryRun: true });
+    const { remaining, total, failed } = res.data;
+    const done = Math.max(0, total - remaining);
+    status.textContent = !total ? "עוד אין מסמכים."
+      : remaining ? `${done} מתוך ${total} המסמכים מוכנים לחיפוש. ${remaining} עוד לא נסרקו.`
+      : `כל ${total} המסמכים מוכנים לחיפוש${failed ? ` (${failed} לא נקראו)` : ""}.`;
+    btn.hidden = !remaining && !failed;
+    btn.textContent = remaining ? `סריקת ${remaining} המסמכים שנותרו` : "ניסיון חוזר למסמכים שלא נקראו";
+    btn.dataset.retry = remaining ? "" : "1";
+  } catch (e) {
+    status.textContent = "לא ניתן לבדוק כרגע.";
+    btn.hidden = true;
+  }
+}
+
+$("btn-index-all").addEventListener("click", async () => {
+  if (indexingAll) return;
+  indexingAll = true;
+  const btn = $("btn-index-all"), status = $("search-status");
+  const retryFailed = btn.dataset.retry === "1";
+  btn.disabled = true;
+  btn.classList.add("waiting");
+  try {
+    for (let round = 0; round < 60; round++) {
+      const res = await call("indexPending", 540000)({ retryFailed: retryFailed && round === 0 });
+      const { remaining, total, done } = res.data;
+      status.textContent = `סורק… ${total - remaining} מתוך ${total}`;
+      if (!remaining || !done) break;
+    }
+    toast("הסריקה הסתיימה");
+  } catch (e) {
+    toast(errMsg(e));
+  } finally {
+    indexingAll = false;
+    btn.disabled = false;
+    btn.classList.remove("waiting");
+    renderSearchStatus();
+  }
+});
+
 /* ---------- access list (settings) ---------- */
 
 function renderAccess(snap) {
@@ -1971,6 +2064,7 @@ $("bulk-save-all").addEventListener("click", async () => {
         files: [await filePayload(item.file)],
         ai: item.ai
       });
+      indexInBackground("receipts", res.data.id);
       item.status = "saved";
       item.savedId = res.data.id;
       item.title = mainItem(item.ai.items)?.name || item.title;
@@ -2180,6 +2274,7 @@ document.addEventListener("touchend", (e) => {
 const medical = initMedical({
   db, call, $, el, toast, busy, show, currentView, errMsg, norm,
   toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile, withYearDividers,
+  ensureSearchIndex, textSnippet, snippetEl, indexInBackground,
   MAX_TOTAL_BYTES, setupBulkSources, isAdmin: () => isAdmin, driveConnected: () => (driveCfg ? !!driveCfg.connected : true)
 });
 
@@ -2197,6 +2292,8 @@ function route() {
     }
     show("settings");
     renderNotify();
+    ensureSearchIndex();
+    renderSearchStatus();
     medical.renderSettings();
     return;
   }

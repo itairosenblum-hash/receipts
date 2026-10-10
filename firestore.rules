@@ -55,6 +55,12 @@ service cloud.firestore {
         && request.resource.data.name.size() <= 40;
     }
 
+    // אינדקס החיפוש בתוך המסמכים: נכתב רק ע"י ה-Functions
+    match /searchIndex/{id} {
+      allow read: if isAllowed();
+      allow write: if false;
+    }
+
     // טוקני התראות: כל משתמש מנהל רק את שלו
     match /tokens/{uid} {
       allow read, write: if isAllowed() && request.auth.uid == uid;

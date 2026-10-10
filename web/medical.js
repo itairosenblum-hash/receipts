@@ -60,6 +60,7 @@ export function initMedical(ctx) {
   const {
     db, call, $, el, toast, busy, show, currentView, errMsg, norm,
     toDate, fmtDate, isoDate, fmtSize, prepareFile, filePayload, thumb, displayFile, withYearDividers,
+    ensureSearchIndex, textSnippet, snippetEl, indexInBackground,
     MAX_TOTAL_BYTES, setupBulkSources, isAdmin, driveConnected
   } = ctx;
 
@@ -147,7 +148,7 @@ export function initMedical(ctx) {
       if (year && String(docYear(d)) !== year) return false;
       if (!term) return true;
       return [d.title, d.provider, DOC_TYPES[d.docType], specName(d.specialty), memberName(d.memberId), d.notes, ...(d.tags || [])]
-        .filter(Boolean).some((s) => String(s).toLowerCase().includes(term));
+        .filter(Boolean).some((s) => String(s).toLowerCase().includes(term)) || !!textSnippet("medical", d.id, term);
     });
     const matchMember = (d, f) => !f || (f === "_none" ? !d.memberId || !memberName(d.memberId) : d.memberId === f);
     const list = base.filter((d) => matchMember(d, memberFilter));
@@ -174,7 +175,8 @@ export function initMedical(ctx) {
       el("div", { class: "receipt-main" },
         el("div", { class: "receipt-title", text: d.title || DOC_TYPES[d.docType] || "מסמך" }),
         el("div", { class: "receipt-sub", text: [specName(d.specialty) || DOC_TYPES[d.docType], d.provider].filter(Boolean).join(" · ") }),
-        memberName(d.memberId) && el("div", { class: "tag-row" }, el("span", { class: "tag tag-member", text: memberName(d.memberId) }))
+        memberName(d.memberId) && el("div", { class: "tag-row" }, el("span", { class: "tag tag-member", text: memberName(d.memberId) })),
+        term && snippetEl(textSnippet("medical", d.id, term))
       ),
       el("div", { class: "receipt-date", text: fmtDate(toDate(d.date)) })
     )));
@@ -186,7 +188,7 @@ export function initMedical(ctx) {
     empty.querySelector("p").textContent = docs.length ? "נסו לשנות את החיפוש או הסינון." : "לחצו על הפלוס כדי להוסיף את המסמך הראשון.";
   }
 
-  $("med-search").addEventListener("input", renderList);
+  $("med-search").addEventListener("input", () => { if ($("med-search").value.trim()) ensureSearchIndex(); renderList(); });
   $("med-filter-type").addEventListener("change", renderList);
   $("med-filter-year").addEventListener("change", renderList);
 
@@ -448,6 +450,7 @@ export function initMedical(ctx) {
         busy("מעלה לדרייב ושומר…");
         const files = await Promise.all(pendingFiles.map(filePayload));
         const res = await call("saveMedical")({ doc: payload, files });
+        indexInBackground("medical", res.data.id);
         const fromBulk = bulkItems.find((b) => b.id === bulkEditId);
         pendingFiles.forEach((x) => x !== fromBulk?.file && x.previewUrl && URL.revokeObjectURL(x.previewUrl));
         pendingFiles = [];
@@ -555,6 +558,7 @@ export function initMedical(ctx) {
     busy("מוחק…");
     try {
       await call("removeMedicalFile")({ id, driveFileId: f.driveFileId });
+      indexInBackground("medical", id);
       toast("הקובץ נמחק");
     } catch (e) {
       toast(errMsg(e));
@@ -572,6 +576,7 @@ export function initMedical(ctx) {
       const prepared = await prepareFile(file, "document");
       if (prepared.size > MAX_TOTAL_BYTES) throw new Error("הקובץ גדול מדי (עד 7MB)");
       await call("addMedicalFile")({ id: detailId, file: await filePayload(prepared) });
+      indexInBackground("medical", detailId);
       if (prepared.previewUrl) URL.revokeObjectURL(prepared.previewUrl);
       toast("הקובץ נוסף");
     } catch (err) {
@@ -767,6 +772,7 @@ export function initMedical(ctx) {
       renderBulk();
       try {
         const res = await call("saveMedical")({ doc: docFromAi(item.ai, item), files: [await filePayload(item.file)] });
+        indexInBackground("medical", res.data.id);
         item.status = "saved";
         item.savedId = res.data.id;
         item.title = item.ai.title || item.title;

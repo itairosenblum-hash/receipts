@@ -16,6 +16,9 @@ import {
 
 // מסמכים רפואיים: מודול נפרד עם אוסף, תיקייה ופונקציות משלו
 export * from "./medical.js";
+// חיפוש בתוך תוכן המסמכים
+export { indexDoc, indexPending } from "./search.js";
+import { removeFromIndex } from "./search.js";
 
 const FILE_KINDS = { receipt: "קבלה", warranty: "תעודת אחריות", label: "מדבקה", other: "קובץ" };
 const decodeFiles = (files) => decodeFilesWith(files, FILE_KINDS, "other");
@@ -520,6 +523,7 @@ export const deleteReceipt = onCall({ secrets: SECRETS }, async (request) => {
   const ids = (snap.data().files || []).map((f) => f.driveFileId);
   if (ids.length) await trashQuietly(await getDrive(), ids);
   await ref.delete();
+  await removeFromIndex("receipts", ref.id);
   return { ok: true };
 });
 

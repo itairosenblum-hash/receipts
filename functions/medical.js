@@ -10,6 +10,7 @@ import {
   db, SECRETS, GEMINI_API_KEY, GEMINI_MODEL,
   requireAllowed, getDrive, localDateParts, slug, extension, driveQ, decodeFilesWith, trashQuietly
 } from "./shared.js";
+import { removeFromIndex } from "./search.js";
 
 const COLLECTION = "medical";
 const MEMBERS = "medicalMembers";
@@ -375,6 +376,7 @@ export const deleteMedical = onCall({ secrets: SECRETS }, async (request) => {
   const ids = (data.files || []).map((f) => f.driveFileId);
   if (ids.length) await trashQuietly(await getDrive(), ids);
   await ref.delete();
+  await removeFromIndex("medical", ref.id);
   return { ok: true };
 });
 
