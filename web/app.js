@@ -8,9 +8,9 @@ import {
   collection, query, orderBy, arrayUnion, arrayRemove, Timestamp, serverTimestamp, deleteField
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
-import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
+import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
-import { initMedical } from "./medical.js?v=1";
+import { initMedical } from "./medical.js?v=2";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -23,7 +23,7 @@ const accessRef = doc(db, "config", "access");
 const driveRef = doc(db, "config", "drive");
 
 const $ = (id) => document.getElementById(id);
-const VIEWS = ["loading", "login", "denied", "list", "edit", "detail", "settings", "bulk", "medical", "med-edit", "med-detail"];
+const VIEWS = ["loading", "login", "denied", "list", "edit", "detail", "settings", "bulk", "medical", "med-edit", "med-detail", "med-bulk"];
 const FILE_KINDS = { receipt: "קבלה", warranty: "תעודת אחריות", label: "מדבקה", other: "אחר" };
 const MAX_TOTAL_BYTES = 7 * 1024 * 1024;
 // הכתובת הראשית של האפליקציה, לקישורים ששולחים לאחרים
@@ -52,9 +52,26 @@ let unsubs = [];
 
 /* ---------- helpers ---------- */
 
+// אזור הקבלות או האזור הרפואי, לצבע של שורת המערכת ולכיוון המעבר
+const MED_VIEWS = new Set(["medical", "med-edit", "med-detail", "med-bulk"]);
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+
 function show(view) {
-  for (const v of VIEWS) $("view-" + v).hidden = v !== view;
-  window.scrollTo(0, 0);
+  const from = VIEWS.find((v) => !$("view-" + v).hidden);
+  const apply = () => {
+    for (const v of VIEWS) $("view-" + v).hidden = v !== view;
+    window.scrollTo(0, 0);
+    document.querySelector('meta[name="theme-color"]').content = MED_VIEWS.has(view) ? "#2F5DA8" : "#0F6E6A";
+  };
+  // מעבר מונפש בין הטאבים: הרשימה מחליקה הצידה והסמן של הטאב נוסע למקומו החדש
+  const dir = from === "list" && view === "medical" ? "to-med" : from === "medical" && view === "list" ? "to-rec" : null;
+  if (dir && document.startViewTransition && !reduceMotion.matches) {
+    const root = document.documentElement;
+    root.dataset.vt = dir;
+    document.startViewTransition(apply).finished.finally(() => { delete root.dataset.vt; });
+  } else {
+    apply();
+  }
 }
 const currentView = () => VIEWS.find((v) => !$("view-" + v).hidden);
 
@@ -426,6 +443,7 @@ function startApp() {
   }, (e) => console.error(e)));
 
   medical.start(unsubs);
+  listenForeground();
 
   unsubs.push(onSnapshot(accessRef, renderAccess, (e) => {
     console.error(e);
@@ -1315,7 +1333,7 @@ function whatsappReceiptText(r) {
   return `*${title}*\n${receiptSummary(r)}\n\nהקבלה באפליקציה: ${SHARE_URL}#/r/${r.id}`;
 }
 
-$("btn-share-app").href = whatsappHref(`קבלות ואחריות: כל הקבלות והאחריות של הבית במקום אחד\n${SHARE_URL}`);
+$("btn-share-app").href = whatsappHref(`הכספת: הקבלות, האחריות והמסמכים הרפואיים של הבית במקום אחד\n${SHARE_URL}`);
 
 async function doShare(p) {
   try {
@@ -1459,6 +1477,27 @@ async function renderNotify() {
   }
 }
 
+// כשהאפליקציה פתוחה, Firebase מעביר את ההודעה לדף ולא מציג אותה בעצמו; מציגים אותה כאן דרך ה-Service Worker
+let foregroundListening = false;
+async function listenForeground() {
+  if (foregroundListening || !("Notification" in window) || !("serviceWorker" in navigator)) return;
+  if (!(await messagingSupported().catch(() => false))) return;
+  foregroundListening = true;
+  onMessage(getMessaging(app), async (payload) => {
+    const n = payload.notification || {};
+    const link = payload.fcmOptions?.link || payload.data?.link || "";
+    try {
+      if (Notification.permission !== "granted") throw new Error("no permission");
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(n.title || "הכספת", {
+        body: n.body || "", icon: "icon-192.png", badge: "icon-192.png", dir: "rtl", lang: "he", data: { link }
+      });
+    } catch {
+      toast([n.title, n.body].filter(Boolean).join(" · "));
+    }
+  });
+}
+
 $("btn-notify").addEventListener("click", async () => {
   if (notifyBusy) return;
   notifyBusy = true;
@@ -1475,6 +1514,7 @@ $("btn-notify").addEventListener("click", async () => {
       updatedAt: serverTimestamp()
     }, { merge: true });
     toast("ההתראות הופעלו במכשיר הזה");
+    listenForeground();
   } catch (e) {
     console.error(e);
     toast(e.user ? e.message : "הפעלת ההתראות נכשלה: " + (e.code || e.message));
@@ -1489,7 +1529,7 @@ $("btn-notify-test").addEventListener("click", async () => {
   busy("שולח התראת בדיקה…");
   try {
     await call("sendTestNotification", 30000)();
-    toast("נשלחה התראה. אם האפליקציה פתוחה, ייתכן שהיא תופיע רק אחרי שתצאו ממנה.");
+    toast("נשלחה התראת בדיקה");
   } catch (e) {
     toast(errMsg(e));
   } finally {
@@ -1847,6 +1887,29 @@ window.addEventListener("beforeunload", (e) => {
     e.returnValue = "";
   }
 });
+
+/* ---------- swipe between the receipts and medical tabs ---------- */
+// כמו בעברית: הטאב "רפואי" משמאל, ולכן החלקה ימינה מביאה אותו, והחלקה שמאלה מחזירה לקבלות
+let swipe = null;
+document.addEventListener("touchstart", (e) => {
+  const v = currentView();
+  if ((v !== "list" && v !== "medical") || e.touches.length !== 1 || e.target.closest(".chip-row, input, select, textarea, .viewer")) {
+    swipe = null;
+    return;
+  }
+  const t = e.touches[0];
+  swipe = { x: t.clientX, y: t.clientY, at: Date.now() };
+}, { passive: true });
+document.addEventListener("touchend", (e) => {
+  if (!swipe) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipe.x, dy = t.clientY - swipe.y, quick = Date.now() - swipe.at < 700;
+  swipe = null;
+  if (!quick || Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+  const v = currentView();
+  if (dx > 0 && v === "list") location.hash = "#/m";
+  else if (dx < 0 && v === "medical") location.hash = "#/";
+}, { passive: true });
 
 /* ---------- medical documents (separate module) ---------- */
 

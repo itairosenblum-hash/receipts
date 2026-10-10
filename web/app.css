@@ -400,8 +400,48 @@ a.btn-secondary, a.btn-primary { display: inline-flex; align-items: center; just
   height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center;
   text-decoration: none; color: var(--ink-2); font-weight: 600; font-size: 15px;
 }
-.tab.active { background: var(--surface); color: #0F6E6A; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.tabs { position: relative; view-transition-name: tabs; }
+.tab { position: relative; z-index: 1; transition: color .25s; }
+.tab.active { color: #0F6E6A; }
 .tab.tab-med.active { color: #2F5DA8; }
+/* הסמן הלבן של הטאב הפעיל. במעבר בין האזורים הוא נוסע מצד לצד */
+.tab-pill {
+  position: absolute; top: 4px; bottom: 4px; width: calc(50% - 6px); inset-inline-start: 4px;
+  background: var(--surface); border-radius: 9px; box-shadow: 0 1px 3px rgba(0,0,0,.1);
+  view-transition-name: tab-pill;
+}
+.tabs[data-active="med"] .tab-pill { inset-inline-start: calc(50% + 2px); box-shadow: 0 1px 3px rgba(47,93,168,.25); }
+#view-list .app-header h1, #view-medical .app-header h1 { view-transition-name: area-title; }
+#view-list .fab, #view-medical .fab { view-transition-name: fab; }
+
+/* מעבר בין קבלות לרפואי (View Transitions) */
+::view-transition-old(root), ::view-transition-new(root) {
+  animation-duration: .34s; animation-timing-function: cubic-bezier(.2, .8, .2, 1);
+}
+html[data-vt="to-med"]::view-transition-old(root) { animation-name: vt-out-right; }
+html[data-vt="to-med"]::view-transition-new(root) { animation-name: vt-in-left; }
+html[data-vt="to-rec"]::view-transition-old(root) { animation-name: vt-out-left; }
+html[data-vt="to-rec"]::view-transition-new(root) { animation-name: vt-in-right; }
+::view-transition-group(tab-pill) { animation-duration: .42s; animation-timing-function: cubic-bezier(.34, 1.4, .5, 1); }
+::view-transition-group(fab) { animation-duration: .34s; }
+::view-transition-old(area-title) { animation: vt-title-out .2s ease-in both; }
+::view-transition-new(area-title) { animation: vt-title-in .3s .08s cubic-bezier(.2, .8, .2, 1) both; }
+::view-transition-group(area-title) { animation-duration: .34s; }
+@keyframes vt-in-left { from { transform: translateX(-28%); opacity: 0; } }
+@keyframes vt-in-right { from { transform: translateX(28%); opacity: 0; } }
+@keyframes vt-out-left { to { transform: translateX(-28%); opacity: 0; } }
+@keyframes vt-out-right { to { transform: translateX(28%); opacity: 0; } }
+@keyframes vt-title-out { to { opacity: 0; transform: translateY(-8px); } }
+@keyframes vt-title-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* דפדפנים בלי View Transitions: הרשימה נכנסת בהחלקה קלה */
+@supports not (view-transition-name: none) {
+  #view-list:not([hidden]) .receipts, #view-medical:not([hidden]) .receipts { animation: vt-fade-up .3s cubic-bezier(.2, .8, .2, 1); }
+}
+@keyframes vt-fade-up { from { opacity: 0; transform: translateY(10px); } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
 
 .receipt-date { font-size: 14px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tag-member { background: var(--accent-tint); color: var(--accent-ink); }
@@ -422,3 +462,11 @@ a.btn-secondary, a.btn-primary { display: inline-flex; align-items: center; just
 .member-actions { display: flex; align-items: center; gap: 4px; }
 .access-list .remove.neutral { color: var(--accent); }
 .med .field.uncertain:not(.member-field)::after { content: "לא זוהה בוודאות, כדאי לבדוק מול המסמך"; }
+.cat-select #med-spec-icon { position: absolute; inset-inline-start: 8px; top: 50%; transform: translateY(-50%); display: flex; pointer-events: none; }
+.med-head { flex-direction: row; align-items: flex-start; gap: 14px; }
+.med-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.cat-badge.big { width: 56px; height: 56px; border-radius: 16px; }
+.cat-badge.big svg { width: 30px; height: 30px; }
+#view-med-bulk > .pick-btn { flex: none; height: 50px; }
+#med-bulk-member-field { gap: 8px; }
+.bulk-sub .tag-member { margin-inline-start: 6px; }

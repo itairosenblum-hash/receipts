@@ -32,6 +32,28 @@ const DOC_TYPES = {
   other: "אחר"
 };
 
+// תחום הרופא / המרפאה, לאייקון ולחיפוש. חייב להיות זהה לרשימה ב-web/medical.js
+const SPECIALTIES = {
+  family: "רפואת משפחה",
+  pediatrics: "רפואת ילדים",
+  orthopedics: "אורתופדיה",
+  ophthalmology: "עיניים",
+  ent: "אף אוזן גרון",
+  dermatology: "עור",
+  cardiology: "לב",
+  gynecology: "נשים",
+  dental: "שיניים",
+  neurology: "נוירולוגיה",
+  gastro: "גסטרו",
+  pulmonology: "ריאות",
+  urology: "אורולוגיה",
+  endocrinology: "אנדוקרינולוגיה וסוכרת",
+  mental: "בריאות הנפש",
+  physio: "פיזיותרפיה",
+  allergy: "אלרגיה",
+  emergency: "מיון ורפואה דחופה"
+};
+
 const decodeFiles = (files) => decodeFilesWith(files, FILE_KINDS, "document");
 
 async function loadMembers() {
@@ -55,6 +77,7 @@ function cleanDoc(d, memberIds) {
   return {
     memberId,
     docType: DOC_TYPES[d.docType] ? d.docType : "other",
+    specialty: SPECIALTIES[d.specialty] ? d.specialty : "",
     title,
     provider: String(d.provider || "").trim().slice(0, 80),
     date: Timestamp.fromMillis(date),
@@ -146,6 +169,9 @@ const SCAN_INSTRUCTIONS = `You extract filing metadata from personal medical doc
 This is for organizing a family archive. Extract only what is needed to file the document, never medical interpretation.
 Rules:
 - docType: exactly one of the type ids given.
+- specialty: the medical specialty of the doctor or clinic, exactly one of the specialty ids given, when the document makes it clear
+  (the doctor's title, the clinic or department name, or the kind of visit). null for general documents such as lab results
+  without a referring specialty, approvals or vaccine records, unless a specialty is clearly printed.
 - title: a short Hebrew label (2 to 6 words) naming the document by its type and specialty, test or body area as printed,
   for example "ביקור אורתופד", "ספירת דם", "צילום חזה", "מרשם אנטיביוטיקה", "הפניה לרופא עיניים".
   Do not put findings, results, values or diagnoses in the title.
@@ -162,6 +188,7 @@ const SCAN_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     docType: { type: Type.STRING },
+    specialty: { type: Type.STRING, nullable: true },
     title: { type: Type.STRING, nullable: true },
     provider: { type: Type.STRING, nullable: true },
     date: { type: Type.STRING, nullable: true, description: "YYYY-MM-DD" },
@@ -171,6 +198,7 @@ const SCAN_SCHEMA = {
       type: Type.OBJECT,
       properties: {
         docType: { type: Type.NUMBER },
+        specialty: { type: Type.NUMBER },
         title: { type: Type.NUMBER },
         provider: { type: Type.NUMBER },
         date: { type: Type.NUMBER },
@@ -178,8 +206,8 @@ const SCAN_SCHEMA = {
       }
     }
   },
-  required: ["docType", "title", "provider", "date", "memberId", "tags", "confidence"],
-  propertyOrdering: ["docType", "title", "provider", "date", "memberId", "tags", "confidence"]
+  required: ["docType", "specialty", "title", "provider", "date", "memberId", "tags", "confidence"],
+  propertyOrdering: ["docType", "specialty", "title", "provider", "date", "memberId", "tags", "confidence"]
 };
 
 export const scanMedical = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 300, memory: "512MiB" }, async (request) => {
@@ -197,6 +225,8 @@ export const scanMedical = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 3
   const context = [
     "Document types (id: name):",
     ...Object.entries(DOC_TYPES).map(([id, name]) => `- ${id}: ${name}`),
+    "\nSpecialties (id: name):",
+    ...Object.entries(SPECIALTIES).map(([id, name]) => `- ${id}: ${name}`),
     members.length ? "\nFamily members (id: name):" : "\nNo family members defined: memberId must be null.",
     ...members.map((m) => `- ${m.id}: ${m.name}`),
     existingTags.length ? `\nExisting tags: ${existingTags.join(", ")}` : "",
@@ -205,6 +235,7 @@ export const scanMedical = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 3
 
   const schema = structuredClone(SCAN_SCHEMA);
   schema.properties.docType.enum = Object.keys(DOC_TYPES);
+  schema.properties.specialty.enum = Object.keys(SPECIALTIES);
 
   const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY.value(), httpOptions: { timeout: 150000 } });
   let result;
@@ -239,6 +270,7 @@ export const scanMedical = onCall({ secrets: [GEMINI_API_KEY], timeoutSeconds: 3
   return {
     model: GEMINI_MODEL.value(),
     docType: DOC_TYPES[result.docType] ? result.docType : "other",
+    specialty: SPECIALTIES[result.specialty] ? result.specialty : null,
     title: result.title ? String(result.title).trim().slice(0, 120) : null,
     provider: result.provider ? String(result.provider).trim().slice(0, 80) : null,
     date,
