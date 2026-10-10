@@ -365,8 +365,23 @@ const canPickFolders = "webkitdirectory" in document.createElement("input") && m
 // מחבר כפתור תיקייה וגרירה למסך ייבוא. onFiles מקבל את הקבצים המתאימים בלבד
 function setupBulkSources(viewId, folderInputId, onFiles) {
   const view = $(viewId);
-  view.querySelector(".folder-pick").hidden = !canPickFolders;
-  view.querySelector(".drop-hint").hidden = !canPickFolders;
+  const main = view.querySelector(".pick-main");
+  const pop = view.querySelector(".pick-pop");
+  const filesInput = pop.querySelector('input:not([webkitdirectory])');
+  // כפתור אחד: במחשב נפתח תפריט קטן (קבצים / תיקייה שלמה); בטלפון, שבו אי אפשר לבחור תיקייה, נפתח ישר בורר הקבצים
+  if (!canPickFolders) {
+    main.lastChild.textContent = " בחירת קבצים ";
+    view.querySelector(".drop-hint").hidden = true;
+  }
+  const close = () => { pop.hidden = true; main.setAttribute("aria-expanded", "false"); };
+  main.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!canPickFolders) { filesInput.click(); return; }
+    pop.hidden = !pop.hidden;
+    main.setAttribute("aria-expanded", String(!pop.hidden));
+  });
+  pop.addEventListener("change", close);
+  document.addEventListener("click", (e) => { if (!pop.hidden && !e.target.closest(".pick-menu")) close(); });
   const take = async (list) => {
     const { files, skipped } = pickableFiles(list);
     if (skipped) toast(`${skipped} קבצים דולגו (רק תמונות ו-PDF)`);
