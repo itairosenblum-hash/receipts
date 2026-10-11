@@ -180,7 +180,7 @@ export function initMedical(ctx) {
         term && snippetEl(textSnippet("medical", d.id, term))
       ),
       el("div", { class: "receipt-date", text: fmtDate(toDate(d.date)) })
-    ), () => medPreview(d))));
+    ), () => medPreview(d)), (g) => (g.length === 1 ? "מסמך אחד" : `${g.length} מסמכים`)));
 
     $("med-empty-bulk").hidden = docs.length > 0;
     const empty = $("med-empty");

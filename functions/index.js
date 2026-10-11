@@ -66,13 +66,18 @@ function cleanReceipt(r) {
 
   const rawItems = Array.isArray(r.items) && r.items.length ? r.items : [r];
   const items = rawItems.slice(0, 30).map((it) => {
-    const warrantyMonths = Math.max(0, Math.min(240, parseInt(it?.warrantyMonths, 10) || 0));
+    // אחריות: תאריך סיום שהוזן ידנית (warrantyEndMs), או מספר חודשים מתאריך הרכישה
+    const manualEnd = Number(it?.warrantyEndMs);
+    const manual = Number.isFinite(manualEnd) && manualEnd >= purchaseDate && manualEnd <= addMonths(purchaseDate, 600);
+    const warrantyMonths = manual ? 0 : Math.max(0, Math.min(240, parseInt(it?.warrantyMonths, 10) || 0));
     return {
       name: String(it?.name ?? it?.productName ?? "").trim().slice(0, 120),
       printedName: String(it?.printedName || "").trim().slice(0, 160),
       price: numOrNull(it?.price),
       warrantyMonths,
-      warrantyEnd: warrantyMonths ? Timestamp.fromMillis(addMonths(purchaseDate, warrantyMonths)) : null,
+      warrantyEnd: manual ? Timestamp.fromMillis(manualEnd)
+        : warrantyMonths ? Timestamp.fromMillis(addMonths(purchaseDate, warrantyMonths)) : null,
+      ...(manual ? { warrantyManual: true } : {}),
       serialNumber: String(it?.serialNumber || "").trim().slice(0, 80),
       main: it?.main === true
     };

@@ -27,8 +27,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600&family=Suez+One&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=41">
-<script type="module" src="app.js?v=42"></script>
+<link rel="stylesheet" href="app.css?v=42">
+<script type="module" src="app.js?v=43"></script>
 </head>
 <body>
 
@@ -536,6 +536,17 @@
     <p id="notify-status" class="muted"></p>
     <button id="btn-notify" class="btn-primary" type="button" hidden>הפעלת התראות במכשיר הזה</button>
     <button id="btn-notify-test" class="btn-secondary" type="button" hidden>שליחת התראת בדיקה</button>
+  </div>
+
+  <div class="card" id="categories-card">
+    <h2>קטגוריות</h2>
+    <p class="muted">קטגוריה שמוסיפים כאן מופיעה בבחירה בטופס, והסריקה האוטומטית תשתמש בה גם היא.</p>
+    <ul id="categories-list" class="access-list"></ul>
+    <form id="category-form" class="access-form">
+      <label for="category-input" class="sr-only">שם קטגוריה להוספה</label>
+      <input id="category-input" maxlength="40" placeholder="קטגוריה חדשה" required>
+      <button type="submit" class="btn-primary">הוספה</button>
+    </form>
   </div>
 
   <div class="card med" id="med-members-card">

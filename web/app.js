@@ -10,7 +10,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
-import { initMedical } from "./medical.js?v=9";
+import { initMedical } from "./medical.js?v=10";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -363,15 +363,32 @@ new MutationObserver(() => {
 
 /* ---------- year dividers in the lists ---------- */
 
-// מוסיף קו מפריד עם השנה בכל מעבר שנה ברשימה (הרשימות ממוינות מהחדש לישן). כשהכל מאותה שנה, אין קו.
-function withYearDividers(list, dateOf, render) {
-  const years = list.map((x) => dateOf(x)?.getFullYear() || null);
-  const multi = new Set(years.filter(Boolean)).size > 1;
+const HE_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
+
+// מוסיף קו מפריד עם השנה בכל מעבר שנה ברשימה (הרשימות ממוינות מהחדש לישן), ובתוך כל שנה כותרת לכל חודש
+// עם סיכום קצר של החודש (metaOf מקבל את הפריטים של החודש). כשהכל מאותה שנה אין קו שנה, וכשהכל מאותו חודש אין כותרות חודש.
+function withYearDividers(list, dateOf, render, metaOf) {
+  const dates = list.map((x) => dateOf(x) || null);
+  const years = dates.map((d) => d?.getFullYear() || null);
+  const months = dates.map((d) => (d ? d.getFullYear() * 12 + d.getMonth() : null));
+  const multiYear = new Set(years.filter(Boolean)).size > 1;
+  const multiMonth = new Set(months.filter((m) => m !== null)).size > 1;
+  const groups = new Map();
+  list.forEach((x, i) => { if (months[i] !== null) groups.set(months[i], [...(groups.get(months[i]) || []), x]); });
+  const thisYear = new Date().getFullYear();
   const out = [];
   list.forEach((x, i) => {
-    if (multi && years[i] && years[i] !== years[i - 1]) {
+    if (multiYear && years[i] && years[i] !== years[i - 1]) {
       out.push(el("div", { class: "year-divider", role: "separator", "aria-label": `שנת ${years[i]}` },
         el("span", { text: String(years[i]) })));
+    }
+    if (multiMonth && months[i] !== null && months[i] !== months[i - 1]) {
+      // בלי קווי שנה, שנה שאינה השנה הנוכחית נכתבת ליד שם החודש
+      const name = HE_MONTHS[dates[i].getMonth()] + (!multiYear && years[i] !== thisYear ? ` ${years[i]}` : "");
+      const meta = metaOf ? metaOf(groups.get(months[i])) : "";
+      out.push(el("div", { class: "month-divider", role: "separator", "aria-label": `${name}${meta ? ", " + meta : ""}` },
+        el("span", { class: "month-name", text: name }),
+        meta && el("span", { class: "month-meta", text: meta })));
     }
     out.push(render(x));
   });
@@ -567,7 +584,19 @@ const CATEGORY_STYLE = {
   home: { fg: "#BE185D", bg: "#FBE3EE", icon: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/>' },
   other: { fg: "#57534E", bg: "#EEECE8", icon: '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>' }
 };
-const catStyle = (id) => CATEGORY_STYLE[id] || CATEGORY_STYLE.other;
+// קטגוריות שנוספו באפליקציה: אייקון של תווית וצבע קבוע מתוך הפלטה לפי המזהה
+const CUSTOM_COLORS = [
+  ["#0F766E", "#DDF2EE"], ["#7C3AED", "#EFE7FD"], ["#B45309", "#FBEFD8"], ["#BE123C", "#FCE4E9"],
+  ["#1E40AF", "#E2E8FB"], ["#4D7C0F", "#E9F3D9"], ["#9D174D", "#F9E3EE"], ["#0369A1", "#DDEFFA"]
+];
+const TAG_ICON = '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>';
+function catStyle(id) {
+  if (CATEGORY_STYLE[id]) return CATEGORY_STYLE[id];
+  if (!id || !categories.some((c) => c.id === id)) return CATEGORY_STYLE.other;
+  const h = [...id].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  const [fg, bg] = CUSTOM_COLORS[h % CUSTOM_COLORS.length];
+  return { fg, bg, icon: TAG_ICON };
+}
 
 // אייקון הקטגוריה בתוך ריבוע צבעוני
 function catBadge(id, cls = "cat-badge") {
@@ -840,6 +869,8 @@ function startApp({ keepView = false } = {}) {
 
   unsubs.push(onSnapshot(query(collection(db, "categories"), orderBy("order")), async (snap) => {
     categories = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    // "אחר" תמיד בסוף, גם אחרי קטגוריות שנוספו
+    categories.sort((a, b) => (a.id === "other") - (b.id === "other"));
     if (!categories.length && isAdmin) await seedCategories();
     fillCategorySelect();
     renderReceipts();
@@ -914,7 +945,14 @@ function fillFilterSelects() {
   yearSel.value = [...yearSel.options].some((o) => o.value === year) ? year : "";
 }
 
+// סיכום חודש ברשימת הקבלות: כמה קבלות וכמה שולם (בשקלים)
+function monthMeta(group) {
+  const sum = group.reduce((n, r) => n + ((r.currency || "ILS") === "ILS" && typeof r.amount === "number" ? r.amount : 0), 0);
+  return [group.length === 1 ? "קבלה אחת" : `${group.length} קבלות`, sum ? fmtAmount(sum) : ""].filter(Boolean).join(" · ");
+}
+
 function renderReceipts() {
+  renderCategoriesCard();
   computeDupMap();
   fillFilterSelects();
   const term = norm($("search").value);
@@ -973,7 +1011,7 @@ function renderReceipts() {
       ),
       el("div", { class: "receipt-amount", text: fmtAmount(r.amount, r.currency || "ILS") })
     ), () => receiptPreview(r));
-  }));
+  }, monthMeta));
 
   const empty = $("empty");
   empty.hidden = !receiptsLoaded || list.length > 0;
@@ -1010,19 +1048,130 @@ const CONFIDENCE_FIELDS = {
   store: "store", amount: "amount", purchaseDate: "date", purchaseTime: "time", categoryId: "categoryId"
 };
 const CONTACT_KEYS = ["storeWebsite", "servicePhone", "storePhone", "storeAddress"];
-const blankItem = () => ({ name: "", printedName: "", price: null, warrantyMonths: null, serialNumber: "" });
+const blankItem = () => ({ name: "", printedName: "", price: null, warrantyMonths: null, warrantyUntil: "", serialNumber: "" });
+
+// אחריות שהוזנה כתאריך סיום (ולא כמספר חודשים מתאריך הרכישה): נשמרת עם warrantyManual
+const manualUntil = (it) => {
+  const end = toDate(it.warrantyEnd);
+  return end && (it.warrantyManual || !it.warrantyMonths) ? isoDate(end) : "";
+};
+
+// סוף האחריות של מוצר בטופס: התאריך שהוזן ידנית, או תאריך הרכישה ועוד מספר החודשים
+function itemEndMs(it, purchaseMs) {
+  if (it.warrantyUntil) return new Date(it.warrantyUntil + "T23:59").getTime();
+  return it.warrantyMonths && purchaseMs ? addMonths(purchaseMs, it.warrantyMonths) : null;
+}
+
+const NEW_CATEGORY = "__new";
 
 function fillCategorySelect() {
   const sel = $("category-select");
-  const current = sel.value;
+  const current = sel.value === NEW_CATEGORY ? "" : sel.value;
   sel.replaceChildren(
     el("option", { value: "", text: "בחירה" }),
-    ...categories.map((c) => el("option", { value: c.id, text: c.name }))
+    ...categories.map((c) => el("option", { value: c.id, text: c.name })),
+    el("option", { value: NEW_CATEGORY, text: "+ קטגוריה חדשה…" })
   );
   if (current) sel.value = current;
   syncCategoryIcon();
 }
-$("category-select").addEventListener("change", syncCategoryIcon);
+
+let lastCategory = "";
+$("category-select").addEventListener("focus", (e) => { lastCategory = e.target.value; });
+$("category-select").addEventListener("change", async (e) => {
+  const sel = e.target;
+  if (sel.value !== NEW_CATEGORY) { lastCategory = sel.value; syncCategoryIcon(); return; }
+  sel.value = lastCategory;
+  syncCategoryIcon();
+  const id = await addCategory(prompt("שם הקטגוריה החדשה") || "");
+  if (!id) return;
+  fillCategorySelect();
+  sel.value = id;
+  lastCategory = id;
+  userEdited.add("categoryId");
+  sel.closest(".field")?.classList.remove("uncertain");
+  syncCategoryIcon();
+});
+
+/* ---------- categories (settings) ---------- */
+
+// מוסיף קטגוריה ומחזיר את המזהה שלה. שם שכבר קיים מחזיר את הקטגוריה הקיימת.
+async function addCategory(rawName) {
+  const name = String(rawName).trim().slice(0, 40);
+  if (!name) return null;
+  const existing = categories.find((c) => norm(c.name) === norm(name));
+  if (existing) { toast("הקטגוריה כבר קיימת"); return existing.id; }
+  const id = "c" + Date.now().toString(36);
+  const order = categories.reduce((mx, c) => Math.max(mx, c.order || 0), 0) + 1;
+  try {
+    await setDoc(doc(db, "categories", id), { name, warrantyMonths: 0, order, createdAt: serverTimestamp() });
+    if (!categories.some((c) => c.id === id)) categories.splice(Math.max(0, categories.length - 1), 0, { id, name, order });
+    toast("הקטגוריה נוספה");
+    return id;
+  } catch (e) {
+    toast(errMsg(e));
+    return null;
+  }
+}
+
+function renderCategoriesCard() {
+  const counts = new Map();
+  receipts.forEach((r) => counts.set(r.categoryId, (counts.get(r.categoryId) || 0) + 1));
+  $("categories-list").replaceChildren(...categories.map((c) => {
+    const n = counts.get(c.id) || 0;
+    return el("li", {},
+      el("span", { class: "cat-row" }, catBadge(c.id, "cat-badge small"), el("span", { text: c.name })),
+      el("span", { class: "member-actions" },
+        el("span", { class: "muted small", text: !n ? "" : n === 1 ? "קבלה אחת" : `${n} קבלות` }),
+        el("button", { class: "remove neutral", type: "button", text: "שינוי שם", onclick: () => renameCategory(c) }),
+        c.id !== "other" && el("button", { class: "remove", type: "button", text: "הסרה", "aria-label": "הסרת " + c.name, onclick: () => removeCategory(c, n) })
+      )
+    );
+  }));
+}
+
+$("category-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const input = $("category-input");
+  if (await addCategory(input.value)) input.value = "";
+});
+
+async function renameCategory(c) {
+  const name = (prompt("שם חדש", c.name) || "").trim().slice(0, 40);
+  if (!name || name === c.name) return;
+  if (categories.some((x) => x.id !== c.id && norm(x.name) === norm(name))) { toast("יש כבר קטגוריה בשם הזה"); return; }
+  try {
+    await updateDoc(doc(db, "categories", c.id), { name });
+    toast("השם עודכן");
+  } catch (e) {
+    toast(errMsg(e));
+  }
+}
+
+// הסרת קטגוריה: הקבלות שבה עוברות ל"אחר"
+async function removeCategory(c, count) {
+  const msg = count
+    ? `להסיר את "${c.name}"? ${count === 1 ? "הקבלה שבה תעבור" : `${count} הקבלות שבה יעברו`} ל"אחר".`
+    : `להסיר את "${c.name}"?`;
+  if (!confirm(msg)) return;
+  busy("מסיר…");
+  try {
+    const ids = receipts.filter((r) => r.categoryId === c.id).map((r) => r.id);
+    for (let i = 0; i < ids.length; i += 400) {
+      const batch = writeBatch(db);
+      ids.slice(i, i + 400).forEach((id) => batch.update(doc(db, "receipts", id), { categoryId: "other" }));
+      await batch.commit();
+    }
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "categories", c.id));
+    await batch.commit();
+    toast("הקטגוריה הוסרה");
+  } catch (e) {
+    toast(errMsg(e));
+  } finally {
+    busy(null);
+  }
+}
 
 function openEdit(id) {
   const r = id ? receipts.find((x) => x.id === id) : null;
@@ -1065,7 +1214,8 @@ function openEdit(id) {
       name: it.name || "",
       printedName: it.printedName || "",
       price: typeof it.price === "number" ? it.price : null,
-      warrantyMonths: it.warrantyMonths || null,
+      warrantyMonths: manualUntil(it) ? null : it.warrantyMonths || null,
+      warrantyUntil: manualUntil(it),
       serialNumber: it.serialNumber || "",
       main: it.main === true
     }));
@@ -1125,26 +1275,29 @@ function moneyField(value, onChange) {
 
 /* ---------- products editor ---------- */
 
-function itemEndText(months) {
+// תאריך סוף האחריות שמוצג בשדה "בתוקף עד" כשהאחריות הוזנה בחודשים
+function itemEndIso(it) {
   const date = form.elements.date.value;
-  if (!months || !date) return "";
-  return `בתוקף עד ${fmtDate(new Date(addMonths(new Date(date + "T12:00").getTime(), months)))}`;
+  if (it.warrantyUntil) return it.warrantyUntil;
+  if (!it.warrantyMonths || !date) return "";
+  return isoDate(new Date(addMonths(new Date(date + "T12:00").getTime(), it.warrantyMonths)));
 }
 
 function renderItems() {
   const box = $("items-list");
   box.replaceChildren(...formItems.map((it, i) => {
-    const endEl = el("span", { class: "muted item-end", text: itemEndText(it.warrantyMonths) });
+    // אחריות: מספר חודשים מתאריך הרכישה, או תאריך סיום שמזינים ידנית. כל אחד מהשדות מנקה את השני.
+    const monthsEl = el("input", { type: "number", inputmode: "numeric", min: "0", max: "240", value: it.warrantyMonths ?? "", placeholder: "לא ידוע" });
+    const untilEl = el("input", { type: "date", class: "item-until" + (it.warrantyUntil ? "" : " auto"), value: itemEndIso(it) });
     const onInput = (key, parse) => (e) => {
       it[key] = parse ? parse(e.target.value) : e.target.value;
       userEdited.add("items");
       e.target.closest(".field")?.classList.remove("invalid");
       $("items-block").classList.remove("uncertain");
-      if (key === "warrantyMonths") endEl.textContent = itemEndText(it.warrantyMonths);
       if (key === "price" || key === "name") updateStars();
     };
     const int = (v) => (parseInt(v, 10) > 0 ? parseInt(v, 10) : null);
-    return el("div", { class: "item-card" },
+    const card = el("div", { class: "item-card" },
       el("div", { class: "item-top" },
         formItems.length > 1 && el("button", {
           type: "button", class: "icon-btn item-star", "aria-label": `סימון מוצר ${i + 1} כראשי`,
@@ -1165,13 +1318,27 @@ function renderItems() {
       el("div", { class: "grid-2" },
         el("label", { class: "field" }, "מחיר",
           moneyField(it.price, (v, e) => onInput("price", () => v)(e))),
-        el("label", { class: "field" }, "אחריות (חודשים)",
-          el("input", { type: "number", inputmode: "numeric", min: "0", max: "240", value: it.warrantyMonths ?? "", placeholder: "לא ידוע", oninput: onInput("warrantyMonths", int) }))
+        el("label", { class: "field" }, "מספר סידורי",
+          el("input", { value: it.serialNumber, maxlength: "80", dir: "auto", placeholder: "לא חובה", oninput: onInput("serialNumber") }))
       ),
-      endEl,
-      el("label", { class: "field" }, "מספר סידורי (לא חובה)",
-        el("input", { value: it.serialNumber, maxlength: "80", dir: "auto", oninput: onInput("serialNumber") }))
+      el("div", { class: "grid-2" },
+        el("label", { class: "field" }, "אחריות (חודשים)", monthsEl),
+        el("label", { class: "field" }, "או: בתוקף עד", untilEl)
+      ),
     );
+    monthsEl.addEventListener("input", (e) => {
+      onInput("warrantyMonths", int)(e);
+      it.warrantyUntil = "";
+      untilEl.value = itemEndIso(it);
+      untilEl.classList.add("auto");
+    });
+    untilEl.addEventListener("input", (e) => {
+      onInput("warrantyUntil")(e);
+      it.warrantyMonths = null;
+      monthsEl.value = "";
+      untilEl.classList.toggle("auto", !it.warrantyUntil);
+    });
+    return card;
   }));
   $("items-count").textContent = formItems.length > 1 ? `${formItems.length} מוצרים` : "";
   updateStars();
@@ -1201,7 +1368,7 @@ $("btn-add-item").addEventListener("click", () => {
 form.elements.amount.addEventListener("input", onMoneyInput);
 
 form.elements.date.addEventListener("input", () => {
-  $("items-list").querySelectorAll(".item-end").forEach((n, i) => { n.textContent = itemEndText(formItems[i]?.warrantyMonths); });
+  $("items-list").querySelectorAll(".item-until").forEach((n, i) => { if (formItems[i] && !formItems[i].warrantyUntil) n.value = itemEndIso(formItems[i]); });
 });
 
 async function addPendingFiles(fileList) {
@@ -1303,6 +1470,7 @@ function applyScan(d, force) {
       printedName: it.printedName || "",
       price: typeof it.price === "number" ? it.price : null,
       warrantyMonths: it.warrantyMonths || null,
+      warrantyUntil: "",
       serialNumber: it.serialNumber || ""
     }));
   }
@@ -1392,6 +1560,9 @@ form.addEventListener("submit", async (ev) => {
   const items = formItems
     .map((it) => ({ ...it, name: it.name.trim(), serialNumber: (it.serialNumber || "").trim() }))
     .filter((it) => it.name);
+  const hasTime = !!f.time.value;
+  const purchaseMs = f.date.value ? new Date(`${f.date.value}T${hasTime ? f.time.value : "12:00"}`).getTime() : null;
+  items.forEach((it) => { it.warrantyEndMs = it.warrantyUntil ? itemEndMs(it, purchaseMs) : null; });
   if (!items.length) {
     problems.push("שם מוצר");
     $("items-list").querySelector("input")?.closest(".field")?.classList.add("invalid");
@@ -1403,6 +1574,11 @@ form.addEventListener("submit", async (ev) => {
     err.hidden = false;
     return;
   }
+  if (items.some((it) => it.warrantyEndMs && it.warrantyEndMs < purchaseMs)) {
+    err.textContent = "תאריך סוף האחריות מוקדם מתאריך הרכישה";
+    err.hidden = false;
+    return;
+  }
 
   const total = pendingFiles.reduce((s, x) => s + x.size, 0);
   if (total > MAX_TOTAL_BYTES) {
@@ -1411,8 +1587,6 @@ form.addEventListener("submit", async (ev) => {
     return;
   }
 
-  const hasTime = !!f.time.value;
-  const purchaseMs = new Date(`${f.date.value}T${hasTime ? f.time.value : "12:00"}`).getTime();
   const receipt = {
     items,
     store: f.store.value.trim(),
@@ -1434,12 +1608,13 @@ form.addEventListener("submit", async (ev) => {
         name: it.name,
         printedName: it.printedName || "",
         price: typeof it.price === "number" && Number.isFinite(it.price) ? it.price : null,
-        warrantyMonths: it.warrantyMonths || 0,
-        warrantyEnd: it.warrantyMonths ? Timestamp.fromMillis(addMonths(purchaseMs, it.warrantyMonths)) : null,
+        warrantyMonths: it.warrantyUntil ? 0 : it.warrantyMonths || 0,
+        warrantyEnd: itemEndMs(it, purchaseMs) ? Timestamp.fromMillis(itemEndMs(it, purchaseMs)) : null,
+        ...(it.warrantyUntil ? { warrantyManual: true } : {}),
         serialNumber: it.serialNumber,
         main: it.main === true
       }));
-      const ends = items.filter((it) => it.warrantyMonths).map((it) => addMonths(purchaseMs, it.warrantyMonths));
+      const ends = items.map((it) => itemEndMs(it, purchaseMs)).filter(Boolean);
       await updateDoc(doc(db, "receipts", editingId), {
         ...receipt,
         items: savedItems,
@@ -1572,7 +1747,7 @@ function renderDetail(r) {
         warrantyEls = [
           el("div", { class: "warranty-head" }, el("b", { text: title }), el("span", { class: "muted", text: `עד ${fmtDate(w.end)}` })),
           el("div", { class: "progress" + (w.cls === "soon" ? " soon" : "") }, el("div", { style: `width:${used.toFixed(1)}%` })),
-          el("div", { class: "progress-meta" }, el("span", { text: left }), el("span", { text: `${it.warrantyMonths} חודשים בסך הכל` }))
+          el("div", { class: "progress-meta" }, el("span", { text: left }), el("span", { text: it.warrantyMonths && !it.warrantyManual ? `${it.warrantyMonths} חודשים בסך הכל` : "תאריך שהוזן ידנית" }))
         ];
       }
       return el("div", { class: "detail-item" },

@@ -696,6 +696,15 @@ html[data-area="med"] { --sh: 28, 61, 120; }
 .year-divider::after { background: linear-gradient(to right, transparent, color-mix(in srgb, var(--hero) 30%, transparent)); }
 .year-divider span { font-family: 'Suez One', 'Rubik', serif; font-size: 18px; letter-spacing: .5px; }
 
+/* כותרת חודש ברשימות: שם החודש מימין, סיכום משמאל */
+.month-divider {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  margin: 8px 4px 0; padding: 0 2px 5px;
+  border-bottom: 1.5px solid color-mix(in srgb, var(--hero) 16%, transparent);
+}
+.month-divider .month-name { font-weight: 700; font-size: 15px; color: color-mix(in srgb, var(--hero) 80%, var(--ink)); }
+.month-divider .month-meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
 /* חיפוש בתוך תוכן המסמכים */
 .snippet { font-size: 13px; color: var(--ink-2); background: var(--bg); border-radius: 8px; padding: 4px 8px; margin-top: 2px; overflow-wrap: anywhere; }
 .snippet mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent-ink); border-radius: 3px; padding: 0 2px; font-weight: 700; }
@@ -814,3 +823,9 @@ html[data-area="med"] #upload { --accent: #2F5DA8; --accent-tint: #E2EAF7; --acc
 .upload-foot { justify-content: space-between; align-items: center; margin-top: -4px; }
 .awake-note { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .upload-foot .link-btn { min-height: 36px; }
+
+/* קטגוריות בהגדרות */
+.cat-row { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+
+/* תאריך סוף אחריות שחושב מהחודשים (ולא הוזן ידנית) מוצג באפור */
+.item-until.auto { color: var(--muted); }
