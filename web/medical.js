@@ -4,6 +4,7 @@
 import {
   collection, doc, query, orderBy, onSnapshot, addDoc, deleteDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { cropCameraFiles } from "./scan-crop.js?v=1";
 
 // חייב להיות זהה לרשימה ב-functions/medical.js
 const DOC_TYPES = {
@@ -401,7 +402,12 @@ export function initMedical(ctx) {
     renderPendingFiles();
     if (!editingId && !aiResult && !scanning && pendingFiles.length) runScan(false);
   }
-  $("med-pick-camera").addEventListener("change", async (e) => { await addPendingFiles(e.target.files); e.target.value = ""; });
+  $("med-pick-camera").addEventListener("change", async (e) => {
+    const picked = [...e.target.files];
+    e.target.value = "";
+    const files = await cropCameraFiles(picked);
+    if (files.length) await addPendingFiles(files);
+  });
   $("med-pick-file").addEventListener("change", async (e) => { await addPendingFiles(e.target.files); e.target.value = ""; });
 
   function renderPendingFiles() {

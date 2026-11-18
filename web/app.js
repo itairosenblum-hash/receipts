@@ -10,7 +10,8 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js?v=2";
-import { initMedical } from "./medical.js?v=10";
+import { initMedical } from "./medical.js?v=11";
+import { cropCameraFiles } from "./scan-crop.js?v=1";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -1497,7 +1498,13 @@ form.addEventListener("input", (e) => {
   e.target.closest(".field")?.classList.remove("uncertain", "invalid");
 });
 
-$("pick-camera").addEventListener("change", async (e) => { await addPendingFiles(e.target.files); e.target.value = ""; });
+// צילום: חיתוך ויישור אוטומטי לפני ההוספה
+$("pick-camera").addEventListener("change", async (e) => {
+  const picked = [...e.target.files];
+  e.target.value = "";
+  const files = await cropCameraFiles(picked);
+  if (files.length) await addPendingFiles(files);
+});
 $("pick-file").addEventListener("change", async (e) => { await addPendingFiles(e.target.files); e.target.value = ""; });
 
 function renderPendingFiles() {
